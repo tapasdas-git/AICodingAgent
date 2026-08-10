@@ -1,0 +1,42 @@
+>>>>>> from __future__ import annotations
+       
+       
+>>>>>> def is_prime(n: int) -> bool:
+    9:     if n <= 1:
+    3:         return False
+    6:     if n <= 3:
+    1:         return True
+    5:     if n % 2 == 0 or n % 3 == 0:
+    2:         return False
+       
+    3:     factor = 5
+    4:     while factor * factor <= n:
+    3:         if n % factor == 0 or n % (factor + 2) == 0:
+    2:             return False
+    1:         factor += 6
+    1:     return True
+       
+       
+>>>>>> def get_prime_factors(n: int) -> list[int]:
+    5:     if n < 2:
+    2:         return []
+       
+    3:     factors: list[int] = []
+    3:     remaining = n
+       
+    6:     while remaining % 2 == 0:
+    3:         factors.append(2)
+    3:         remaining //= 2
+       
+    3:     divisor = 3
+    6:     while divisor * divisor <= remaining:
+    6:         while remaining % divisor == 0:
+    3:             factors.append(divisor)
+    3:             remaining //= divisor
+    3:         divisor += 2
+       
+    3:     if remaining > 1:
+    2:         factors.append(remaining)
+       
+    3:     return factors
+       

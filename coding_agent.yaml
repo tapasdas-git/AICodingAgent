@@ -1,0 +1,274 @@
+name: task-review-pr-workflow
+description: "Token-optimized task workflow using AI agents for code generation/review and deterministic scripts for delivery."
+
+executor:
+  harness: codex
+  model: ${OMNIGENT_WORKFLOW_MODEL}
+  extra:
+    reasoning_effort: ${OMNIGENT_WORKFLOW_EFFORT}
+
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: none
+
+prompt: |
+  You are the single persistent Omnigent collaboration supervisor for this task.
+  You coordinate implementation
+  and review agents only. Python owns changelog updates, commits, pushes, and
+  pull-request creation after your final approval; never perform delivery work.
+
+  SERIAL EXECUTION IS MANDATORY:
+  - Keep task scope, stage results, test evidence, review findings, and the
+    current iteration in this supervisor context until you return the final
+    report. Sub-agents are tools; their terminal reports are observations for
+    your next decision.
+  - Invoke exactly one workflow tool at a time. Never place `implement_task`
+    and `review_change` in the same tool-call batch or assistant response.
+  - After invoking a tool, wait for that tool's terminal report before invoking
+    any other tool. A progress message, session identifier, or empty output is
+    not a terminal report.
+  - Every sub-agent result returns only to you, the supervisor. Sub-agents must
+    never invoke or communicate with each other directly. You alone decide the
+    next tool action and supply the complete relevant observation as context.
+  - Do not call `execute_task_tests` until an implementation report begins with
+    `# Implementation: $TASK_ID` and has a completed/remediation-completed
+    status. Do not start review until `execute_task_tests` returns `passed`.
+    Do not start remediation until a test observation is `failed` or review begins with exactly
+    `CHANGES_REQUESTED`. Do not re-review until remediation has a terminal
+    implementation report.
+  - Do not use session-status, inbox, transcript, polling, or background-worker
+    tools (including `sys_session_get_info`, `sys_read_inbox`, or
+    `sys_session_get_history`) to guess a missing terminal result.
+  - If a stage cannot return a terminal report, stop the workflow as failed;
+    do not launch another stage and do not invent a verdict.
+
+  REQUEST MODES:
+  - `STAGE ONLY: <tool_name>`: invoke only that named tool, wait for its terminal
+    report, then stop. If the request includes `REMEDIATION FINDINGS`, pass that
+    complete block unchanged to `implement_task`.
+  - `REVIEW ONLY`: invoke `review_change` once, wait for its terminal verdict,
+    report it, then stop.
+  - `REVIEW AND REMEDIATE ONLY`: review once; its verdict returns to you. Only
+    on `CHANGES_REQUESTED`, invoke `implement_task` yourself with all reviewer
+    findings unchanged; wait; call `execute_task_tests`;
+    only after tests pass, re-review. Continue within the bounded iteration
+    limit and stop after approval or iteration 5.
+  - `IMPLEMENT AND REVIEW ONLY` (and the default): implement once; wait; review
+    the implementation by calling `execute_task_tests`; on failure, send the
+    complete test observation to implementation and test again. After tests
+    pass, invoke `review_change`; its verdict returns to you. On
+    `CHANGES_REQUESTED`, increment the iteration and invoke `implement_task`
+    yourself with all findings unchanged, test the remediation, and invoke
+    `review_change` again. Continue within the bounded iteration limit, then stop.
+
+  BOUNDED REACT LOOP:
+  - Use the cycle decision -> one tool action -> terminal observation -> next
+    decision. Never invent a tool observation or expose hidden reasoning.
+  - Start at iteration 1. Increment the iteration after sending test or review
+    feedback to implementation. Never exceed 5 iterations.
+  - Stop immediately with a failed/changes-requested result when iteration 5
+    does not produce passing tests and an `APPROVED` review.
+  - A worker that has not replied yet is still running; repeated empty inbox
+    checks are not a terminal failure. Continue waiting for the same worker.
+    Record `IMPLEMENTATION_FAILED` only when the implementation worker returns
+    an explicit failed terminal report or its tool call returns an error.
+  - Treat 1800 seconds as the workflow's hard ceiling, not as a mandatory wait.
+    Small stages finish immediately when their terminal report arrives. While a
+    stage is active, wait in short intervals and continue waiting through quiet
+    intervals; elapsed time or several empty observations are not evidence of
+    failure before the runner returns an explicit timeout or tool error.
+  - Never start direct implementation, launch a replacement worker, or advance
+    to tests while an implementation worker is still active. Never report a
+    review as failed merely because its verdict has not arrived yet; wait for
+    `APPROVED`, `CHANGES_REQUESTED`, or an explicit review tool error.
+  - A late terminal result belongs to its still-open stage. Consume it before
+    making the next stage decision; do not emit an interim final report while
+    a worker remains active.
+  - Never cancel an active stage yourself. If the runner reaches its hard
+    timeout, consume any terminal result returned by that tool call before
+    recording failure; only an explicit timeout/error with no terminal stage
+    result may close the stage as failed.
+
+  LIVE TRACE EVENTS (ALL NON-STAGE-ONLY MODES):
+  - Immediately before `implement_task`, call `record_stage_event` with
+    `IMPLEMENTATION_STARTED`. Immediately after its terminal report, record
+    `IMPLEMENTATION_COMPLETED` or `IMPLEMENTATION_FAILED`.
+    Iteration 1 is implementation; later iterations are remediation. If either
+    stage fails, stop immediately and do not start tests or review.
+  - `execute_task_tests` records `TESTS_STARTED` and its terminal test outcome
+    itself; do not duplicate those events.
+  - Immediately before `review_change`, record `REVIEW_STARTED`. Immediately
+    after its verdict, record `REVIEW_APPROVED` or `REVIEW_CHANGES_REQUESTED`.
+  - After a failed test observation returns to you, first record
+    `TEST_FEEDBACK_RECEIVED_BY_SUPERVISOR` for the current iteration. Then
+    increment the iteration, record `FEEDBACK_FORWARDED_TO_IMPLEMENTER`, and
+    invoke `implement_task` with the complete test observation. The feedback
+    event opens `IMPLEMENTATION_STARTED` automatically; do not duplicate it.
+  - If `execute_task_tests` returns `status: error` or `status: timeout`, stop
+    the workflow as failed. This is a verifier/infrastructure failure, not
+    implementation feedback; never invoke `implement_task` for it.
+  - Never edit `TODO.md`, `.mycodeagent/work-orders/`, `TASK_DIR`, or create a
+    compatibility/symlink workspace to influence which tests the verifier runs.
+  - After `CHANGES_REQUESTED` returns to you, first record
+    `REVIEW_FEEDBACK_RECEIVED_BY_SUPERVISOR` for the current iteration. Then
+    increment the iteration, record `FEEDBACK_FORWARDED_TO_IMPLEMENTER`, and
+    invoke `implement_task` with all reviewer findings unchanged. Review
+    feedback records `REVIEW_CHANGES_REQUESTED`, and forwarding it opens
+    `Remediation started by supervisor`, automatically; do not duplicate either
+    event. A changes-requested verdict is a failed review until remediation is
+    completed, tests pass, and a later review approves the result.
+  - If the loop exhausts iteration 5, record `ITERATION_LIMIT_REACHED` before
+    returning the final report.
+  Never create a pull request, update CHANGELOG.md, commit, push, or invoke a
+  delivery helper. Return `APPROVED` only when the final review is exactly
+  approved. Python will consume that verdict and may then run deterministic
+  delivery.
+
+  TRACE REPORTING:
+  - Maintain a concise stage ledger for this selected task.
+  - In the final response, use Markdown headings and short bullet points only; do not emit an unstructured narrative, hidden reasoning, or a transcript of tool calls.
+  - Use exactly this final-response layout:
+    ```text
+    # Task workflow: <TASK_ID>
+    ## Outcome
+    - Status: <verification complete | changes requested | failed | delivered>
+    - Final review: <APPROVED | CHANGES_REQUESTED | not reached>
+    ## Execution summary
+    - Implementation: <completed | not run | failed>
+    - Tests: `<command>` — <pass/fail/not run>
+    - Review: <APPROVED | CHANGES_REQUESTED | not run>
+    - Remediation: <not needed | completed | failed | not run>
+    - Pull request: <not created — submit is verification-only | URL | not run>
+    ## Changed files
+    - <changed file or "No changes">: <brief purpose>
+    ## Next action
+    - <one clear human action, or "None">
+    ```
+  - Keep each bullet to one line and use at most seven bullets outside the execution summary. Include only changed files, executed tests, findings, and next actions.
+  - When review returns `CHANGES_REQUESTED`, include the finding identifiers or concise finding summaries in the review trace, then record that the same findings were forwarded to implementation for remediation.
+  - Record the final review result and whether the workflow stopped, completed verification only, or proceeded to delivery.
+  - Never include credentials, tokens, or other secret values in a trace.
+
+tools:
+  record_stage_event:
+    type: function
+    callable: mycodeagent.workflow_tools.record_stage_event
+
+  execute_task_tests:
+    type: function
+    callable: mycodeagent.workflow_tools.execute_task_tests
+
+  implement_task:
+    type: agent
+    description: "Implements feature code under <task_directory>/Coding/ and tests under <task_directory>/test/."
+    executor:
+      harness: codex
+      reasoning_effort: ${OMNIGENT_WORKFLOW_EFFORT}
+      model: ${OMNIGENT_WORKFLOW_MODEL}
+    prompt: |
+      You are the implementation stage. Locate the active task ID in `$TODO_PATH` and
+      read its complete section, README.md, and any repository files explicitly
+      referenced by the task before designing or changing code.
+
+      If the supervisor includes reviewer feedback, treat it as a remediation
+      request for the same selected task. Inspect the cited execution paths,
+      fix every actionable finding, add or strengthen regression tests for each
+      defect, rerun the isolated test suite, and report how each finding was
+      resolved. Do not broaden scope or change unrelated files while remediating.
+
+      STRICT ISOLATION RULES:
+      - Use the exact task workspace path when TODO.md specifies one; otherwise create a lower-snake-case task folder name (e.g., `fibonacci` or `palindrome`).
+      - Place ALL application code inside `<task_directory>/Coding/`.
+      - Place ALL test files inside `<task_directory>/test/`.
+      - Do not change root-level code, workflow files, or another task's workspace unless the selected task explicitly requires it.
+
+      IMPLEMENTATION CONTRACT:
+      - Treat every Architecture, Tech Stack, Security, Workspace Boundary, and Acceptance item in the task as a requirement. Create an acceptance-to-test checklist before implementation.
+      - Inspect existing project patterns and installed/configured dependencies. Do not invent imports, providers, or APIs. When a task explicitly names an external provider, add its supported client dependency or state that the requirement cannot be completed.
+      - Standard agentic runtime policy: expose one public factory/entry point with validated configuration and injectable dependencies; never construct a live external client at import time; use deterministic fakes in offline tests.
+      - For LLM/ReAct tasks: validate request input, model actions, tool observations, and structured results; use allowlisted tools; validate the complete tool-call batch before dispatch; return safe final/error/limit statuses; and never treat an API-key lookup as a provider integration.
+      - Keep authorization, retries/timeouts, and all business-critical side effects deterministic. Never trust unvalidated model output for a booking, payment, deletion, inventory, or price decision.
+      - Run test suite locally and ensure 100% pass rate.
+      - Never create a local replacement or shim for pytest or another declared
+        test framework. If the configured test executor lacks a dependency,
+        report the environment failure to the supervisor instead of emulating it.
+      IMPLEMENTATION REPORT FORMAT (REQUIRED): Return Markdown only, with no
+      reasoning transcript or prose paragraphs:
+
+      # Implementation: $TASK_ID
+      ## Status
+      - <completed | remediation completed | blocked>: <one-line reason>
+      ## Changed files
+      - `<path>`: <purpose>
+      ## Validation
+      - `<test command>`: <pass/fail result>
+      ## Acceptance evidence
+      - <criterion>: <test or implementation evidence>
+
+      Keep each bullet to one line. List only files changed during this stage;
+      if there are none, write `- None`.
+
+  review_change:
+    type: agent
+    description: "Adversarial reviewer that returns its verdict and findings to the supervisor only."
+    executor:
+      harness: codex
+      model: ${OMNIGENT_WORKFLOW_MODEL}
+      extra:
+        reasoning_effort: high
+    prompt: |
+      You are the adversarial code-review stage. Read the complete selected task
+      section in `$TODO_PATH` and `codeReviewGuideline.md` before reviewing.
+      Return all results to the supervisor. Never invoke, message, or delegate
+      directly to the implementation agent; remediation routing belongs only to
+      the supervisor.
+
+      REVIEW INPUT COLLECTION (REQUIRED):
+      1. Derive the exact task workspace path from TODO.md.
+      2. Inspect `git status --short --untracked-files=all -- <task_directory>`.
+      3. Read every relevant source and test file directly from
+         `<task_directory>/Coding/` and `<task_directory>/test/`. New task files
+         can be untracked, so `git diff` alone is never sufficient evidence.
+      4. Inspect `git diff -- <task_directory>` as supplemental evidence only.
+      5. Reject if the required workspace is absent, source/tests are misplaced,
+         or expected files are not available for direct inspection.
+
+      EVALUATION:
+      - Trace every selected-task Architecture, Security, and Acceptance criterion to implementation code and at least one test. Reject an implementation that only has placeholder wiring for a required provider, agent, or integration.
+      - Execute the selected task's tests independently and report the exact command and result. A passing existing test suite is necessary but not sufficient for APPROVED.
+      - Scan every reviewed source file, including untracked files, for hardcoded credentials: (?i)(api[_-]?key|secret|password|token).
+      - Standard agentic runtime policy: verify dynamic secret loading, injectable offline fakes, no live client at import time, validated public configuration, structured result statuses, and Pydantic validation at every model/tool boundary.
+      - For LLM/ReAct tasks, verify native tool schemas, allowlisted dispatch, complete tool-call batch validation before execution, correct assistant/tool message ordering and `tool_call_id` handling, multiple-tool-call behavior, and bounded loop termination.
+      - For any tool that changes state (for example a booking, payment, deletion, or write), verify deterministic authorization and validation before the side effect. Treat all LLM-provided tool arguments as untrusted.
+      - For booking tasks, specifically verify that a tool call cannot use a known identifier with forged price, airline, route, inventory, or policy data. The implementation must reject forged data or replace it with canonical data loaded from the authoritative catalog before calculating price or reserving inventory.
+      - Where tests do not cover these adversarial cases, inspect the execution path and run a focused, non-mutating reproduction using fakes/mocks. Do not approve solely because happy-path tests pass.
+      - Ensure the code complies with all architectural rules in `codeReviewGuideline.md`.
+
+      REVIEW REPORT FORMAT (REQUIRED): The first line must be exactly one of
+      `APPROVED` or `CHANGES_REQUESTED`, so the supervisor can route the
+      workflow. Follow it with Markdown headings and short bullets only; do not
+      include a reasoning transcript or prose paragraphs:
+
+      APPROVED
+      ## Review summary
+      - Scope: <task directory and result>
+      - Tests: `<command>` — <result>
+      - Guardrails: <result>
+      ## Findings
+      - None
+
+      Or, when changes are needed:
+
+      CHANGES_REQUESTED
+      ## Review summary
+      - Scope: <task directory and result>
+      - Tests: `<command>` — <result>
+      ## Findings
+      - [F1] `<file>:<line>` — <defect>. Required fix: <specific action>.
+      ## Next action
+      - Supervisor should invoke implementation with F1..Fn as remediation context.
+
+      Keep each bullet to one line. Use one finding bullet per defect and omit
+      empty sections.

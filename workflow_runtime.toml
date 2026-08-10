@@ -1,0 +1,23 @@
+name = "codex"
+platform_version = "omnigent 0.7.0 (built 2026-07-27T22:01:50Z)"
+command = "omnigent"
+
+# Default/top-level supervisor runtime. Per-stage provider routing is pinned in
+# coding_agent.yaml: Claude implements and Codex reviews.
+harness = "codex"
+model = "gpt-5.4-mini"
+effort = "medium"
+
+# Console diagnostics. Remove a level to suppress it; persistent task traces
+# remain available regardless of this setting.
+console_log_levels = ["debug", "info", "error"]
+
+# Hard ceiling for a complete supervisor invocation. Successful small tasks
+# return as soon as they finish; this limit only protects against a stuck run.
+time_limit_seconds = 1800
+
+# [models.claude_implementer]
+#provider = "anthropic"
+#model_name = "claude-3-5-sonnet-20241022"  # or claude-3-7-sonnet-20250219
+#temperature = 0.2
+#max_tokens = 4096

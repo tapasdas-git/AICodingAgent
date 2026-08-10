@@ -1,0 +1,17 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Python Cache & Coverage
+__pycache__/
+*.pyc
+.coverage
+htmlcov/
+
+# Codex / Workflow Artifacts
+.codex-tmp/
+.trace/
+.logs
+logs/
+.mycodeagent-task-state.lock

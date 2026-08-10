@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MyCodeAgent"
+version = "0.1.0"
+description = "CLI tool for MyCodeAgent task management"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []  # Add third-party packages here, e.g. ["requests>=2.28.0"]
+
+[project.scripts]
+# This lets you run `mycodeagent` directly in an activated virtual environment.
+mycodeagent = "mycodeagent.__main__:main"
