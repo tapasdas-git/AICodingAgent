@@ -1,4 +1,5 @@
 ## Unreleased
+- **TASK-002**: [FEATURE] Build Config Loader & Environment Validator in in workspace/config_loader/
 - **TASK-103**: ## TASK-103 | reviewed | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
 - **SWAF-045**: Implement Fibonacci series utility module
 - **SWAF-046**: Implement palindrome detection utility module
