@@ -38,9 +38,13 @@ prompt: |
     Do not start remediation until a test observation is `failed` or review begins with exactly
     `CHANGES_REQUESTED`. Do not re-review until remediation has a terminal
     implementation report.
-  - Do not use session-status, inbox, transcript, polling, or background-worker
-    tools (including `sys_session_get_info`, `sys_read_inbox`, or
-    `sys_session_get_history`) to guess a missing terminal result.
+  - When an agent tool returns a session identifier or completion notification
+    instead of its terminal report, use `sys_read_inbox` only to wait for and
+    retrieve the result of that same active worker. Keep waiting until the
+    terminal report, an explicit tool error, or the workflow hard timeout.
+  - Do not use session-status, transcript, or background-worker inspection
+    tools (including `sys_session_get_info` or `sys_session_get_history`) to
+    guess a missing result. Do not inspect unrelated sessions or workers.
   - If a stage cannot return a terminal report, stop the workflow as failed;
     do not launch another stage and do not invent a verdict.
 
@@ -70,8 +74,9 @@ prompt: |
     feedback to implementation. Never exceed 5 iterations.
   - Stop immediately with a failed/changes-requested result when iteration 5
     does not produce passing tests and an `APPROVED` review.
-  - A worker that has not replied yet is still running; repeated empty inbox
-    checks are not a terminal failure. Continue waiting for the same worker.
+  - A worker that has not replied yet is still running; repeated empty
+    `sys_read_inbox` results are not a terminal failure. Continue waiting for
+    the same worker without launching a replacement or advancing the workflow.
     Record `IMPLEMENTATION_FAILED` only when the implementation worker returns
     an explicit failed terminal report or its tool call returns an error.
   - Treat 1800 seconds as the workflow's hard ceiling, not as a mandatory wait.
@@ -92,6 +97,10 @@ prompt: |
     result may close the stage as failed.
 
   LIVE TRACE EVENTS (ALL NON-STAGE-ONLY MODES):
+  - Record every lifecycle event exactly once, immediately when it occurs.
+    Never replay implementation or remediation completion events while closing
+    the workflow. Before returning the final report, record only a still-pending
+    terminal event; do not reconstruct earlier trace events.
   - Immediately before `implement_task`, call `record_stage_event` with
     `IMPLEMENTATION_STARTED`. Immediately after its terminal report, record
     `IMPLEMENTATION_COMPLETED` or `IMPLEMENTATION_FAILED`.

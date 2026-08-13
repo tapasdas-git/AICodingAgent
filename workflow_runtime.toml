@@ -1,6 +1,10 @@
 name = "codex"
-platform_version = "omnigent 0.7.0 (built 2026-07-27T22:01:50Z)"
-command = "omnigent"
+platform_version = "omnigent 0.8.2 (built 2026-08-04T22:30:54Z)"
+command = "/Users/tapasdas/.local/bin/omnigent"
+
+# Relative paths are resolved from the primary repository root. Override for a
+# single invocation with MYCODEAGENT_WORKTREE_ROOT.
+worktree_root = ".mycodeagent-worktrees"
 
 # Default/top-level supervisor runtime. Per-stage provider routing is pinned in
 # coding_agent.yaml: Claude implements and Codex reviews.

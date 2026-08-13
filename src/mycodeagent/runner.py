@@ -8,6 +8,7 @@ import queue
 import signal
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import tomllib
@@ -38,6 +39,52 @@ class WorkflowResult:
 
     exit_code: int
     report: str | None = None
+
+
+SUSPENSION_GAP_THRESHOLD_SECONDS = 30.0
+
+
+def workflow_environment(base: dict[str, str] | None = None) -> dict[str, str]:
+    """Return an environment that lets Omnigent import src-layout workflow tools."""
+    environment = dict(os.environ if base is None else base)
+    import_roots = [str(ROOT / "src"), str(ROOT)]
+    existing = environment.get("PYTHONPATH", "")
+    if existing:
+        import_roots.append(existing)
+    environment["PYTHONPATH"] = os.pathsep.join(import_roots)
+    return environment
+
+
+def sleep_preventing_command(command: list[str]) -> list[str]:
+    """Use macOS caffeinate when available so a workflow survives idle time."""
+    if sys.platform != "darwin":
+        return command
+    caffeinate = shutil.which("caffeinate")
+    return [caffeinate, "-i", *command] if caffeinate else command
+
+
+def suspension_gap_seconds(started_at_wall: datetime, ended_at: datetime, elapsed: float) -> float:
+    """Estimate time spent suspended or lost to a significant wall-clock jump."""
+    return max(0.0, (ended_at - started_at_wall).total_seconds() - elapsed)
+
+
+def missing_report_failure(task_id: str, raw_trace_path: Path) -> str:
+    """Return a protocol-valid infrastructure failure when an agent omits its report."""
+    return f"""# Task workflow: {task_id}
+## Outcome
+- Status: failed
+- Final review: not reached
+## Execution summary
+- Implementation: failed — agent exited without a required structured final report
+- Tests: `not run or unknown` — inspect the raw trace
+- Review: not run
+- Remediation: not run
+- Pull request: not run
+## Changed files
+- Unknown: inspect the task worktree before retrying
+## Next action
+- Inspect `{raw_trace_path}` and preserve any partial worktree changes before retrying
+"""
 
 
 def positive_timeout(value: str) -> int:
@@ -77,8 +124,9 @@ def stream_process_output(
 ) -> WorkflowResult:
     """Persist raw runner output while showing only its final structured report."""
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    launched_command = sleep_preventing_command(command)
     process = subprocess.Popen(
-        command, cwd=ROOT, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        launched_command, cwd=ROOT, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", bufsize=1,
         start_new_session=os.name == "posix", creationflags=creationflags,
     )
@@ -126,13 +174,26 @@ def stream_process_output(
 
         return_code = process.wait()
         report = extract_structured_report(raw_output)
-        print_structured_workflow_output(report, raw_trace_path)
         ended_at = datetime.now().astimezone()
         elapsed = monotonic() - started_at
-        if return_code == 0 and report is None:
-            return_code = 1
+        suspension_gap = suspension_gap_seconds(started_at_wall, ended_at, elapsed)
+        if suspension_gap >= SUSPENSION_GAP_THRESHOLD_SECONDS:
+            write_trace(
+                trace_path,
+                f"WORKFLOW_SYSTEM_SUSPENSION_SUSPECTED gap_seconds={suspension_gap:.2f} "
+                f"wall_elapsed_seconds={(ended_at - started_at_wall).total_seconds():.2f} "
+                f"active_elapsed_seconds={elapsed:.2f}",
+            )
+            error(
+                f"Possible system sleep or clock jump detected during workflow "
+                f"({suspension_gap:.1f}s gap)."
+            )
+        if report is None:
+            return_code = return_code or 1
             write_trace(trace_path, "WORKFLOW_PROTOCOL_ERROR reason=missing_structured_final_report")
             error("Workflow failed validation: missing required structured final report.")
+            report = missing_report_failure(trace_path.stem, raw_trace_path)
+        print_structured_workflow_output(report, raw_trace_path)
         write_trace(trace_path, f"WORKFLOW_FINISHED process_exit_code={return_code} started_at={started_at_wall.isoformat()} ended_at={ended_at.isoformat()} elapsed_seconds={elapsed:.2f}")
         info(f"Workflow finished at {ended_at.isoformat(timespec='seconds')} after {elapsed:.1f}s (exit code {return_code}).")
         return WorkflowResult(return_code, report)
@@ -165,7 +226,7 @@ def execute_omnigent_stage(
         raise SystemExit("timeout must be greater than zero")
 
     trace_path = task_trace_path(task.task_id)
-    environment = os.environ.copy()
+    environment = workflow_environment()
     environment.update({
         "OMNIGENT_WORKFLOW_MODEL": str(settings["model"]), "OMNIGENT_WORKFLOW_EFFORT": str(settings["effort"]),
         "TASK_ID": task.task_id,

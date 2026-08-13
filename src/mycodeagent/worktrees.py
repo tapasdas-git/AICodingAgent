@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
-from .paths import ROOT, TRACE_DIR
+from .paths import ROOT, SETTINGS_PATH, TRACE_DIR
 from .platform_utils import find_project_python, resolve_executable, restrict_file_permissions
 from .tasks import get_task_section, get_task_spec, parse_todo_file, update_task_state
 
@@ -24,9 +25,20 @@ def _git(*arguments: str) -> str:
 
 
 def _worktree_path(task_id: str) -> Path:
-    """Keep task worktrees beside the primary checkout, never inside its diff."""
+    """Resolve the configured task-worktree root with an environment override."""
     configured = os.environ.get("MYCODEAGENT_WORKTREE_ROOT", "").strip()
-    worktree_root = Path(configured).expanduser().resolve() if configured else ROOT.parent / ".mycodeagent-worktrees"
+    if not configured:
+        with SETTINGS_PATH.open("rb") as settings_file:
+            configured = str(tomllib.load(settings_file).get("worktree_root", "")).strip()
+    if configured:
+        configured_path = Path(configured).expanduser()
+        worktree_root = (
+            configured_path.resolve()
+            if configured_path.is_absolute()
+            else (ROOT / configured_path).resolve()
+        )
+    else:
+        worktree_root = ROOT.parent / ".mycodeagent-worktrees"
     return worktree_root / task_id.lower()
 
 

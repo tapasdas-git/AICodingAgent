@@ -55,20 +55,98 @@ def _write_stage_event(trace_path: Path, event: str, iteration: int) -> None:
     write_trace(trace_path, f"{_event_commentary(event, iteration)} (iteration {iteration})")
 
 
-def _last_stage_event(trace_path: Path) -> tuple[str, int | None] | None:
-    """Return the latest live-commentary stage event."""
+def _stage_event_history(trace_path: Path) -> list[tuple[str, int]]:
+    """Return current-workflow live-commentary stage events in trace order."""
     commentary_to_event = {
         **{commentary: event for event, commentary in EVENT_COMMENTARY.items()},
         **{commentary: event for event, commentary in REMEDIATION_COMMENTARY.items()},
     }
-    for line in reversed(trace_path.read_text(encoding="utf-8").splitlines()):
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    workflow_start = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if lines[index].split("] ", 1)[-1].startswith("WORKFLOW_STARTED ")
+        ),
+        -1,
+    )
+    history: list[tuple[str, int]] = []
+    for line in lines[workflow_start + 1 :]:
         message = line.split("] ", 1)[-1]
         for commentary, event in commentary_to_event.items():
             prefix = f"{commentary} (iteration "
             if message.startswith(prefix) and message.endswith(")"):
                 iteration_text = message[len(prefix) : -1]
                 if iteration_text.isdigit():
-                    return event, int(iteration_text)
+                    history.append((event, int(iteration_text)))
+                    break
+    return history
+
+
+def _last_stage_event(trace_path: Path) -> tuple[str, int | None] | None:
+    """Return the latest live-commentary stage event."""
+    history = _stage_event_history(trace_path)
+    return history[-1] if history else None
+
+
+def _stage_transition_error(
+    history: list[tuple[str, int]], event: str, iteration: int
+) -> str | None:
+    """Reject stale, skipped, or out-of-order supervisor lifecycle events."""
+    if not history:
+        if event not in {"IMPLEMENTATION_STARTED", "REVIEW_STARTED"} or iteration != 1:
+            return "the first stage event must start implementation or review at iteration 1"
+        return None
+
+    latest_iteration = history[-1][1]
+    if iteration < latest_iteration:
+        return f"cannot record iteration {iteration}; current iteration is {latest_iteration}"
+    if iteration > latest_iteration + 1:
+        return f"cannot skip from iteration {latest_iteration} to iteration {iteration}"
+    if (event, iteration) in history:
+        return None
+
+    events = {recorded_event for recorded_event, recorded_iteration in history if recorded_iteration == iteration}
+    implementation_terminal = events & {"IMPLEMENTATION_COMPLETED", "IMPLEMENTATION_FAILED"}
+    review_terminal = events & {"REVIEW_APPROVED", "REVIEW_CHANGES_REQUESTED"}
+
+    if event == "IMPLEMENTATION_STARTED":
+        if iteration == 1 or ("FEEDBACK_FORWARDED_TO_IMPLEMENTER", iteration) not in history:
+            return "remediation can start only after feedback is forwarded for the same iteration"
+    elif event in {"IMPLEMENTATION_COMPLETED", "IMPLEMENTATION_FAILED"}:
+        if "IMPLEMENTATION_STARTED" not in events:
+            return "implementation must start before it can finish"
+        if implementation_terminal:
+            return "implementation already has a terminal event for this iteration"
+        if "REVIEW_STARTED" in events or review_terminal:
+            return "implementation cannot finish after review has started"
+    elif event == "TEST_FEEDBACK_RECEIVED_BY_SUPERVISOR":
+        if "IMPLEMENTATION_COMPLETED" not in events:
+            return "test feedback requires completed implementation"
+    elif event == "REVIEW_STARTED":
+        if "IMPLEMENTATION_COMPLETED" not in events:
+            return "review requires completed implementation"
+        if implementation_terminal == {"IMPLEMENTATION_FAILED"}:
+            return "review cannot start after failed implementation"
+    elif event in {"REVIEW_APPROVED", "REVIEW_CHANGES_REQUESTED", "REVIEW_FEEDBACK_RECEIVED_BY_SUPERVISOR"}:
+        if "REVIEW_STARTED" not in events:
+            return "review must start before its verdict or feedback is recorded"
+        if event == "REVIEW_APPROVED" and review_terminal:
+            return "review already has a terminal event for this iteration"
+    elif event == "FEEDBACK_FORWARDED_TO_IMPLEMENTER":
+        prior_iteration = iteration - 1
+        prior_events = {
+            recorded_event
+            for recorded_event, recorded_iteration in history
+            if recorded_iteration == prior_iteration
+        }
+        if iteration <= 1 or not prior_events & {
+            "TEST_FEEDBACK_RECEIVED_BY_SUPERVISOR",
+            "REVIEW_FEEDBACK_RECEIVED_BY_SUPERVISOR",
+        }:
+            return "feedback can advance only from the preceding iteration"
+    elif event == "ITERATION_LIMIT_REACHED" and iteration != 5:
+        return "iteration limit can be reached only at iteration 5"
     return None
 
 
@@ -83,7 +161,15 @@ def record_stage_event(event: str, iteration: int) -> str:
     if not isinstance(iteration, int) or isinstance(iteration, bool) or not 1 <= iteration <= 5:
         return json.dumps({"status": "error", "error": "iteration must be an integer from 1 through 5"})
     trace_path = task_trace_path(task_id)
-    last_event = _last_stage_event(trace_path)
+    history = _stage_event_history(trace_path)
+    last_event = history[-1] if history else None
+    transition_error = _stage_transition_error(history, normalized_event, iteration)
+    if transition_error:
+        return json.dumps({"status": "error", "error": transition_error})
+    if (normalized_event, iteration) in history:
+        return json.dumps(
+            {"status": "already_recorded", "event": normalized_event, "iteration": iteration}
+        )
     if normalized_event == "REVIEW_STARTED" and last_event and last_event[0] == "IMPLEMENTATION_FAILED":
         stage = "remediation" if iteration > 1 else "implementation"
         write_trace(trace_path, f"Review blocked: {stage} failed (iteration {iteration})")

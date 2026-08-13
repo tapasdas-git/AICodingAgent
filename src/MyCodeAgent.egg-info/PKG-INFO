@@ -2,7 +2,7 @@ Metadata-Version: 2.4
 Name: MyCodeAgent
 Version: 0.1.0
 Summary: CLI tool for MyCodeAgent task management
-Requires-Python: >=3.8
+Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 
 MyCodeAgent 
@@ -122,9 +122,12 @@ MyCodeAgent/                        # Project Root Directory
         ├── __init__.py        # Package initialization
         ├── __main__.py        # CLI argument routing and console entry point
         ├── paths.py           # Repository paths and runtime constants
-        ├── tasks.py           # TODO parsing, workspace validation, task states
-        ├── tracing.py         # Secret-redacted task traces and terminal reports
+        ├── tasks.py           # Flexible TODO parsing, derived workspaces, task states
+        ├── protocol.py        # Structured terminal-report parsing and validation
+        ├── tracing.py         # Configurable console logging and secret-redacted traces
         ├── runner.py          # Omnigent process, timeout, and cleanup logic
+        ├── orchestration.py   # Implementation/test/review workflow routing
+        ├── workflow_tools.py  # Stage events and isolated deterministic test execution
         ├── delivery.py        # Deterministic changelog and PR helper execution
         ├── submission.py      # One-task and explicit batch submission modes
         └── worktrees.py       # Isolated task worktree creation and launch
@@ -140,7 +143,15 @@ cd MyCodeAgent
 Create and Activate Virtual Environment
 
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
+
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+
+# Windows Command Prompt
+venv\Scripts\activate.bat
 
 # Install MyCodeAgent in Editable Mode
 
@@ -180,10 +191,10 @@ isolated from the primary checkout:
 
 ```bash
 # Automatically select the first ready task
-mycodeagent submit --worktree --mode 3 --timeout-seconds 600
+mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
 
 # Select one particular ready task
-mycodeagent submit --task-id TASK-104 --worktree --mode 3 --timeout-seconds 600
+mycodeagent submit --task-id TASK-104 --worktree --mode 3 --timeout-seconds 1800
 ```
 
 Use a custom TODO file:
@@ -213,17 +224,18 @@ For safety, batch mode cannot be combined with mode 3 because it could create mu
 ### Parallel task worktrees
 
 Use one Git worktree per task when a task needs its own pull request. Python
-creates each worktree from `origin/main`; it never bases TASK-104 on another
-task's feature branch such as TASK-103.
+creates each worktree from `origin`'s advertised default branch, with `main`
+and `master` fallbacks. It never bases TASK-104 on another task's feature
+branch such as TASK-103.
 
 Let Python create and run a clean worktree for TASK-104:
 
 ```bash
-mycodeagent submit --task-id TASK-104 --worktree --mode 3 --timeout-seconds 600
+mycodeagent submit --task-id TASK-104 --worktree --mode 3 --timeout-seconds 1800
 ```
 
 This creates a sibling worktree at `.mycodeagent-worktrees/task-104` beside the
-primary checkout, on `feature/task-104` from `origin/main`. The selected task
+primary checkout, on `feature/task-104` from the resolved origin default branch. The selected task
 section is frozen as private worktree metadata and logs remain in the primary
 checkout. Its implementation, review, changelog update, commit, push, and PR
 are isolated from other tasks. Remove a worktree only after its PR is safely
@@ -245,24 +257,40 @@ Use a direct command when you already know the task ID:
 | `mycodeagent review TASK-101 --remediate` | One supervisor reviews and runs bounded remediation/test/re-review feedback; no PR |
 | `mycodeagent deliver TASK-101 --approved` | Explicitly authorized deterministic delivery after an approved review |
 
-Each workflow invocation is one-shot. The default runtime limit is 600 seconds; set a limit per command when needed:
+Each workflow invocation is one-shot. The default runtime limit is 1800 seconds. This is a hard ceiling, not a mandatory wait: small tasks return immediately when their terminal result arrives. Override the ceiling per command when needed:
 
 ```bash
 mycodeagent run TASK-101 --timeout-seconds 900
-mycodeagent review TASK-101 --remediate --timeout-seconds 600
-mycodeagent submit --worktree --mode 3 --timeout-seconds 600
+mycodeagent review TASK-101 --remediate --timeout-seconds 1800
+mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
 ```
+
+### Runtime logging
+
+Console diagnostic levels are configured independently in `workflow_runtime.toml`:
+
+```toml
+console_log_levels = ["debug", "info", "error"]
+```
+
+Remove a value to suppress that level. For example, use `["info", "error"]` in normal operation or `["error"]` for error-only console output. Persistent task traces remain enabled regardless of the console selection. Tracing only records and renders diagnostics; structured workflow-result parsing and validation live separately in `protocol.py`.
+
+### Isolated test execution
+
+The verifier always runs the selected interpreter as `python -m pytest`, uses the active task worktree as its working directory, and prepends the worktree root plus its `src` directory to `PYTHONPATH`. This allows imports such as `workspace.example.Coding.module` to resolve consistently without test-side path shims. Test imports that reference another task workspace remain implementation defects and should be corrected during remediation.
 
 ### Monitoring task runs
 
-Each invocation writes an append-only trace to `logs/<TASK_ID>.logs`. The trace
-contains workflow start/finish markers, local start and end timestamps, elapsed
-duration, selected stage mode, complete raw agent output, and timeout or launch
-errors. To keep the terminal readable, it shows only the final structured agent
-report; inspect the trace for the live/raw stream. Monitor an active run in
-another terminal:
+Each invocation writes an append-only lifecycle trace to `logs/<TASK_ID>.logs`
+and verbose agent output to `logs/<TASK_ID>.raw.logs`. The lifecycle trace contains
+workflow start/finish markers, timestamps, elapsed duration, stage transitions,
+test outcomes, and timeout or launch errors. To keep the terminal readable, it
+shows only the final structured report. Monitor an active run in another terminal:
 
 tail -f logs/TASK-101.logs
+
+# Verbose agent output
+tail -f logs/TASK-101.raw.logs
 
 Direct Script Execution (Human-in-the-Loop Fallback)
 
@@ -275,6 +303,40 @@ Create feature branch, commit, push, and open Pull Request on GitHub
 python3 scripts/workflow_helpers.py --repo-root /path/to/worktree --approval-file /path/to/git_approval.toml pr --task-id "TASK-100" --task-dir "workspace/example" --review-status APPROVED
 
 📝 Defining Tasks in TODO.md
+
+### Minimal task format
+
+A user only needs to provide a valid heading. An `Outcome` line is strongly recommended so the implementation intent is unambiguous:
+
+```markdown
+## TASK-107 | ready | P3 | [SMOKE] Build Slug Utility in `workspace/slug_utility/`
+- Outcome: Implement a deterministic standard-library utility that converts text into lowercase URL slugs.
+```
+
+Automatic submission picks the first task whose state is `ready`. The normal state progression is:
+
+```text
+ready -> working -> implemented/reviewed/delivered
+                 -> failed
+```
+
+The heading must contain a task ID such as `TASK-107`, a state, priority `P0` through `P3`, and a title. A task in `working`, `implemented`, `reviewed`, `delivered`, or `failed` remains parseable, but automatic `submit` selects only `ready` tasks.
+
+Workspace metadata is optional. Resolution follows this order:
+
+1. Use an explicit `Source` entry when supplied.
+2. Otherwise use a `workspace/...` path embedded in the title.
+3. Otherwise derive `workspace/<task_id>/`, converting the hyphen to an underscore.
+
+For the example above, MyCodeAgent dynamically supplies the work order with:
+
+```markdown
+- Source: `workspace/slug_utility/Coding/`
+- Tests: `workspace/slug_utility/test/`
+- Requirements: `workspace/slug_utility/Coding/requirements.txt`
+```
+
+Users may still declare these paths explicitly. Explicit paths must be mutually consistent and remain inside the repository. The task workspace does not need to exist before implementation.
 
 ### Coding-agent implementation contract
 
@@ -290,20 +352,14 @@ For an AI-agent task, naming an LLM provider is an implementation requirement. F
 
 The Omnigent workflow is the outer development pipeline (implement, review, changelog, delivery). It is distinct from any multi-agent runtime that the task asks the coding agent to build.
 
-TASK-100 | ready | high | Build Flight Booking Agent in flight_booking
-
-  Description:
-  Implement a flight search and booking module that processes natural language requests.
-
-  Architecture & Boundaries:
-Framework: Python 3.11+, Pydantic v2
-Isolated Boundary: Source code lives in flight_booking/Coding/, tests in flight_booking/test/
-Mocks: Mock external airline APIs for unit tests.
-
-  Acceptance:
-Isolated directory flight_booking/ created.
-Dependencies defined in flight_booking/Coding/requirements.txt.
-All unit tests pass with 100% pass rate.
+```markdown
+## TASK-100 | ready | P1 | Build Flight Booking Agent in `workspace/flight_booking/`
+- Outcome: Implement a flight search and booking module that processes natural-language requests.
+- Acceptance:
+  - Mock external airline APIs so tests run offline.
+  - Validate booking authorization and inventory before reservation.
+  - All task tests pass.
+```
 
 
 # This performs a read-only review only—no implementation changes, remediation, changelog update, or PR creation.
@@ -313,19 +369,60 @@ tail -f logs/TASK-101.logs
 
 # This runs only the implementation stage for the specified task—no review, remediation, changelog, or PR.
 
-mycodeagent run TASK-101 --timeout-seconds 600
+mycodeagent run TASK-101 --timeout-seconds 1800
 
 # This runs implementation and review, without remediation, changelog updates, or PR creation.
 
-mycodeagent verify TASK-101 --timeout-seconds 600
+mycodeagent verify TASK-101 --timeout-seconds 1800
 
 # This runs review, performs one targeted implementation fix only if findings exist, then re-reviews. No PR is created.
 
-mycodeagent review TASK-101 --remediate --timeout-seconds 600
+mycodeagent review TASK-101 --remediate --timeout-seconds 1800
 
 # For a task that has already received an APPROVED review, This performs the deterministic delivery steps:
 mycodeagent deliver TASK-106 --approved
 
 # Run the end to end flow till PR generation
 
-mycodeagent submit --worktree --mode 3 --timeout-seconds 600
+mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
+
+### Platform compatibility
+
+MyCodeAgent supports Python 3.11+ on Windows, macOS, and Linux. `git`, `gh`, and
+`omnigent` must be available on `PATH`; executable locations are resolved at
+runtime. Conventional `venv` and `.venv` interpreters are detected under both
+`Scripts/python.exe` and `bin/python`.
+
+Set `MYCODEAGENT_WORKTREE_ROOT` to use a shorter worktree location, which can
+help Windows installations with restrictive path-length policies. Git pathspecs
+are emitted with forward slashes on every platform. The runtime uses
+platform-specific process-tree cleanup and portable pipe streaming.
+
+For long Windows repositories, enable Git long paths if organizational policy
+allows it:
+
+```powershell
+git config --global core.longpaths true
+
+This runs implementation and review, without remediation, changelog updates, or PR creation.
+
+mycodeagent verify TASK-101 --timeout-seconds 1800
+
+This runs review, performs one targeted implementation fix only if findings exist, then re-reviews. No PR is created.
+
+mycodeagent review TASK-101 --remediate --timeout-seconds 1800
+
+For a task that has already received an APPROVED review, This performs the deterministic delivery steps:
+mycodeagent deliver TASK-106 --approved
+
+Run the end to end flow till PR generation
+
+mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
+
+git for mid failure run
+git worktree list 
+git worktree remove --force /Users/tapasdas/work/workingFolder/.mycodeagent-worktrees/task-109
+git branch --no-merged
+git branch --no-merged | grep 'feature/' | xargs git branch -D
+git branch -D feature/task-109
+```

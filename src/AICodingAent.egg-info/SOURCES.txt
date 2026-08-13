@@ -1,10 +1,10 @@
 README.md
 pyproject.toml
-src/MyCodeAgent.egg-info/PKG-INFO
-src/MyCodeAgent.egg-info/SOURCES.txt
-src/MyCodeAgent.egg-info/dependency_links.txt
-src/MyCodeAgent.egg-info/entry_points.txt
-src/MyCodeAgent.egg-info/top_level.txt
+src/AICodingAent.egg-info/PKG-INFO
+src/AICodingAent.egg-info/SOURCES.txt
+src/AICodingAent.egg-info/dependency_links.txt
+src/AICodingAent.egg-info/entry_points.txt
+src/AICodingAent.egg-info/top_level.txt
 src/mycodeagent/__init__.py
 src/mycodeagent/__main__.py
 src/mycodeagent/delivery.py
@@ -23,5 +23,6 @@ tests/test_platform_utils.py
 tests/test_runner.py
 tests/test_tasks.py
 tests/test_tracing.py
+tests/test_workflow_config.py
 tests/test_workflow_helpers.py
 tests/test_workflow_tools.py

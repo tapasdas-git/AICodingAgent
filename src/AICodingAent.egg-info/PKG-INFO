@@ -1,3 +1,10 @@
+Metadata-Version: 2.4
+Name: AICodingAent
+Version: 0.1.0
+Summary: CLI tool for MyCodeAgent task management
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+
 MyCodeAgent 
 
 MyCodeAgent is an autonomous, agentic task-execution engine and CLI tool designed to automate software feature development, adversarial code reviews, changelog updates, and GitHub Pull Request delivery.
@@ -386,12 +393,9 @@ MyCodeAgent supports Python 3.11+ on Windows, macOS, and Linux. `git`, `gh`, and
 runtime. Conventional `venv` and `.venv` interpreters are detected under both
 `Scripts/python.exe` and `bin/python`.
 
-Set `worktree_root` in `workflow_runtime.toml` to choose where task worktrees
-are created. Relative paths are resolved from the primary repository root; the
-default `.mycodeagent-worktrees` path is ignored by Git. Set
-`MYCODEAGENT_WORKTREE_ROOT` to override this location for one process, which can
-also help Windows installations with restrictive path-length policies. Git
-pathspecs are emitted with forward slashes on every platform. The runtime uses
+Set `MYCODEAGENT_WORKTREE_ROOT` to use a shorter worktree location, which can
+help Windows installations with restrictive path-length policies. Git pathspecs
+are emitted with forward slashes on every platform. The runtime uses
 platform-specific process-tree cleanup and portable pipe streaming.
 
 For long Windows repositories, enable Git long paths if organizational policy

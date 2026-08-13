@@ -180,6 +180,59 @@ def task_title(task_id: str, todo_path: str = "TODO.md") -> str:
     return f"Implement {task_id}"
 
 
+def find_existing_pull_request(branch_name: str, base_branch: str) -> str | None:
+    """Return the URL of an existing task PR, including closed or merged PRs."""
+    completed = subprocess.run(
+        [
+            resolve_tool("gh"), "pr", "list",
+            "--head", branch_name,
+            "--base", base_branch,
+            "--state", "all",
+            "--json", "url",
+            "--jq", ".[0].url",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
+
+
+def ensure_pull_request(task_id: str, task_dir: str, branch_name: str, base_branch: str) -> str:
+    """Create a PR once, reconciling ambiguous client failures with GitHub state."""
+    existing_url = find_existing_pull_request(branch_name, base_branch)
+    if existing_url:
+        print(f"ℹ️ Pull request already exists for {branch_name}: {existing_url}", flush=True)
+        return existing_url
+
+    title = f"feat({task_id}): {task_title(task_id)}"
+    command = [
+        "gh", "pr", "create",
+        "--base", base_branch,
+        "--head", branch_name,
+        "--title", title,
+        "--body", f"Automated PR generated for task `{task_id}` inside isolated directory `{task_dir}/`.",
+    ]
+    try:
+        return run_cmd(command)
+    except RuntimeError:
+        # GitHub may accept the request even when the client times out before
+        # receiving the response. Reconcile remote state before reporting failure.
+        reconciled_url = find_existing_pull_request(branch_name, base_branch)
+        if reconciled_url:
+            print(
+                f"ℹ️ Pull request creation response failed, but GitHub has the PR: {reconciled_url}",
+                flush=True,
+            )
+            return reconciled_url
+        raise
+
+
 def create_pull_request(task_id: str, task_dir: str, review_status: str) -> None:
     """Stages specific task directory, commits, pushes branch, and creates PR."""
     print(f"🚀 Initializing PR process for Task ID: {task_id} in directory: {task_dir}...", flush=True)
@@ -240,16 +293,9 @@ def create_pull_request(task_id: str, task_dir: str, review_status: str) -> None
     run_cmd(["git", "push", "-u", "origin", branch_name])
 
     print("🐙 Creating Pull Request on GitHub...", flush=True)
-    title = f"feat({task_id}): {task_title(task_id)}"
-    pr_url = run_cmd([
-        "gh", "pr", "create",
-        "--base", base_branch,
-        "--head", branch_name,
-        "--title", title,
-        "--body", f"Automated PR generated for task `{task_id}` inside isolated directory `{task_dir}/`."
-    ])
+    pr_url = ensure_pull_request(task_id, task_dir, branch_name, base_branch)
 
-    print(f"\n✅ Pull Request Created Successfully!\n🔗 {pr_url}", flush=True)
+    print(f"\n✅ Pull Request Ready!\n🔗 {pr_url}", flush=True)
 
 
 if __name__ == "__main__":
