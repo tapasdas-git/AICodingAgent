@@ -1,4 +1,5 @@
 ## Unreleased
+- **TASK-300**: [FEATURE] Implement JSON File Logger in `workspace/logger/`
 - **TASK-135**: ## TASK-135 | failed | P2 | [FEATURE] Build Config Loader & Environment Validator in in workspace/config_loader/
 - **TASK-103**: ## TASK-103 | reviewed | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
 - **SWAF-045**: Implement Fibonacci series utility module
