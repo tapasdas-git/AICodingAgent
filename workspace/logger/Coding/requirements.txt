@@ -1,0 +1,2 @@
+# Runtime implementation uses only the Python 3.11+ standard library.
+pytest>=7.0
