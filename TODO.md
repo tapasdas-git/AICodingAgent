@@ -82,7 +82,7 @@
 - Approved by: Tech Lead
 - Approval reference: 2026-07-30 Arch Sync
 
-## TASK-047 | completed | P3 | Create a utility module in `prime_checker` to verify prime numbers and return prime factors.
+## TASK-047 | ready | P3 | Create a utility module in `prime_checker` to verify prime numbers and return prime factors.
 - Outcome: Pure Python module and unit tests for palindrome detection, handling edge cases, case-insensitivity, and special characters.
 - Depends on: None
 - Repository: https://github.com/tapasdas-git/MyOmnigent.git
@@ -133,7 +133,7 @@ Acceptance:
 - Approved by: Tech Lead
 - Approval reference: 2026-08-01 Arch Sync
 
-## TASK-102 | reviewed | P3 | [SMOKE] Build a label-normalization utility for mode-3 workflow validation
+## TASK-102 | delivered | P3 | [SMOKE] Build a label-normalization utility for mode-3 workflow validation
 - Source: `workspace/mode3_smoke/Coding/`
 - Outcome: Create a small, dependency-free Python utility and isolated tests so the complete implementation, review, and delivery workflow can be exercised without external APIs or existing task files.
 - Depends on: None
@@ -155,7 +155,7 @@ Acceptance:
 - Approved by: Tech Lead
 - Approval reference: 2026-08-02 mode-3 smoke-test authorization
 
-## TASK-103 | reviewed | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
+## TASK-103 | ready | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
 - Outcome: Implement a pure Python currency exchange and conversion module with Pydantic schema validation and mock exchange rate lookup tools.
 - Depends on: None
 - Repository: https://github.com/tapasdas-git/MyOCodeAgent.git

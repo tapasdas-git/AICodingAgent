@@ -250,14 +250,6 @@ Use a direct command when you already know the task ID:
 | `mycodeagent review TASK-101 --remediate` | One supervisor reviews and runs bounded remediation/test/re-review feedback; no PR |
 | `mycodeagent deliver TASK-101 --approved` | Explicitly authorized deterministic delivery after an approved review |
 
-Each workflow invocation is one-shot. The default runtime limit is 1800 seconds. This is a hard ceiling, not a mandatory wait: small tasks return immediately when their terminal result arrives. Override the ceiling per command when needed:
-
-```bash
-mycodeagent run TASK-101 --timeout-seconds 900
-mycodeagent review TASK-101 --remediate --timeout-seconds 1800
-mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
-```
-
 ## To test a perticular task post completion
 
 cd /Users/tapasdas/work/AICodingAgent/workspace-worktrees/task-015
@@ -440,6 +432,10 @@ mycodeagent submit  --mode 2
 ## Run the implementaion only
 mycodeagent submit  --mode 1
 
+## to process all ready task
+
+mycodeagent submit --mode 2 --all
+
 
 
 
@@ -450,4 +446,3 @@ git worktree remove --force /Users/tapasdas/work/workingFolder/.mycodeagent-work
 git branch --no-merged
 git branch --no-merged | grep 'feature/' | xargs git branch -D
 git branch -D feature/task-109
-
