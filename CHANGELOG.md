@@ -1,4 +1,5 @@
 ## Unreleased
+- **TASK-102**: ## TASK-102 | working | P3 | [SMOKE] Build a label-normalization utility for mode-3 workflow validation
 - **TASK-304**: ## TASK-304 | working | P3 | [FEATURE] Add String Utility Helpers in `workspace/string_utils/`
 - **TASK-135**: ## TASK-135 | failed | P2 | [FEATURE] Build Config Loader & Environment Validator in in workspace/config_loader/
 - **TASK-103**: ## TASK-103 | reviewed | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
