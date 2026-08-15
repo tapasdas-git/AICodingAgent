@@ -258,6 +258,14 @@ mycodeagent review TASK-101 --remediate --timeout-seconds 1800
 mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
 ```
 
+## To test a perticular task post completion
+
+cd /Users/tapasdas/work/AICodingAgent/workspace-worktrees/task-015
+
+PYTHONPATH="$PWD:$PWD/src" \
+/Users/tapasdas/work/AICodingAgent/venv/bin/python \
+-m pytest -vv workspace/calculator/test
+
 ### Runtime logging
 
 Console diagnostic levels are configured independently in `workflow_runtime.toml`:
