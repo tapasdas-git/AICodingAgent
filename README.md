@@ -413,7 +413,7 @@ platform-specific process-tree cleanup and portable pipe streaming.
 For long Windows repositories, enable Git long paths if organizational policy
 allows it:
 
-```powershell
+powershell
 git config --global core.longpaths true
 
 This runs implementation and review, without remediation, changelog updates, or PR creation.
@@ -427,9 +427,22 @@ mycodeagent review TASK-101 --remediate --timeout-seconds 1800
 For a task that has already received an APPROVED review, This performs the deterministic delivery steps:
 mycodeagent deliver TASK-106 --approved
 
-Run the end to end flow till PR generation
+## Run the end to end flow till PR generation
 
-mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
+mycodeagent submit  --mode 3
+
+## Run the end to end flow till PR generation with customize timeout
+mycodeagent submit  --mode 3 --timeout-seconds 1800 
+
+## Run the end to end flow till approval
+mycodeagent submit  --mode 2
+
+## Run the implementaion only
+mycodeagent submit  --mode 1
+
+
+
+
 
 git for mid failure run
 git worktree list 
@@ -437,4 +450,4 @@ git worktree remove --force /Users/tapasdas/work/workingFolder/.mycodeagent-work
 git branch --no-merged
 git branch --no-merged | grep 'feature/' | xargs git branch -D
 git branch -D feature/task-109
-```
+

@@ -4,7 +4,7 @@ command = "/Users/tapasdas/.local/bin/omnigent"
 
 # Relative paths are resolved from the primary repository root. Override for a
 # single invocation with MYCODEAGENT_WORKTREE_ROOT.
-worktree_root = ".mycodeagent-worktrees"
+worktree_root = "workspace-worktrees"
 
 # Default/top-level supervisor runtime. Per-stage provider routing is pinned in
 # coding_agent.yaml: Claude implements and Codex reviews.
