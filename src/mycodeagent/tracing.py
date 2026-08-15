@@ -17,6 +17,16 @@ SECRET_PATTERN = re.compile(
 LOG_LEVELS = {"debug", "info", "error"}
 
 
+def test_result_logging_enabled() -> bool:
+    """Return whether full deterministic test output should be persisted."""
+    try:
+        with SETTINGS_PATH.open("rb") as settings_file:
+            configured = tomllib.load(settings_file).get("test_result_logging_enabled", True)
+        return configured if isinstance(configured, bool) else True
+    except (OSError, tomllib.TOMLDecodeError):
+        return True
+
+
 def configured_console_log_levels() -> set[str]:
     """Read enabled console levels; remain verbose if configuration is invalid."""
     try:
@@ -69,6 +79,15 @@ def task_raw_trace_path(task_id: str) -> Path:
     """Return the verbose diagnostic log kept separate from the live timeline."""
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
     trace_path = TRACE_DIR / f"{task_id}.raw.logs"
+    trace_path.touch(exist_ok=True)
+    restrict_file_permissions(trace_path)
+    return trace_path
+
+
+def test_trace_path(task_id: str) -> Path:
+    """Return the task-specific append-only log for deterministic test results."""
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    trace_path = TRACE_DIR / f"{task_id}_test.log"
     trace_path.touch(exist_ok=True)
     restrict_file_permissions(trace_path)
     return trace_path

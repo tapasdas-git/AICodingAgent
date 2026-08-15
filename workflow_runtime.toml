@@ -16,6 +16,10 @@ effort = "medium"
 # remain available regardless of this setting.
 console_log_levels = ["debug", "info", "error"]
 
+# Append verbose deterministic pytest results to logs/<TASK_ID>_test.log. Set
+# to false to disable task test-result logs; lifecycle test status remains.
+test_result_logging_enabled = true
+
 # Hard ceiling for a complete supervisor invocation. Successful small tasks
 # return as soon as they finish; this limit only protects against a stuck run.
 time_limit_seconds = 1800

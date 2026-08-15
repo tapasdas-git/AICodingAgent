@@ -3,14 +3,39 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from .paths import ROOT, SETTINGS_PATH, TRACE_DIR
 from .platform_utils import find_project_python, resolve_executable, restrict_file_permissions
 from .tasks import get_task_section, get_task_spec, parse_todo_file, update_task_state
+
+
+RUNTIME_OVERLAY_MODULES = ("tracing.py", "workflow_tools.py")
+
+
+@contextmanager
+def _runtime_module_overlay(workspace: Path) -> Iterator[None]:
+    """Expose current deterministic tools in an origin-based worktree temporarily."""
+    source_package = ROOT / "src" / "mycodeagent"
+    target_package = workspace / "src" / "mycodeagent"
+    originals: dict[Path, tuple[bytes, int]] = {}
+    for module_name in RUNTIME_OVERLAY_MODULES:
+        source = source_package / module_name
+        target = target_package / module_name
+        originals[target] = (target.read_bytes(), target.stat().st_mode)
+        shutil.copy2(source, target)
+    try:
+        yield
+    finally:
+        for target, (content, mode) in originals.items():
+            target.write_bytes(content)
+            target.chmod(mode)
 
 
 def _git(*arguments: str) -> str:
@@ -144,11 +169,12 @@ def run_submission_in_worktree(
     print(f"Worktree: {workspace}")
     print(f"Branch: feature/{task_id.lower()}")
     try:
-        try:
-            completed = subprocess.run(command, cwd=workspace, env=environment, check=False)
-        except OSError as exc:
-            update_task_state(todo_path, task_id, "failed", expected_state="working")
-            raise RuntimeError(f"Could not start isolated task workflow: {exc}") from exc
+        with _runtime_module_overlay(workspace):
+            try:
+                completed = subprocess.run(command, cwd=workspace, env=environment, check=False)
+            except OSError as exc:
+                update_task_state(todo_path, task_id, "failed", expected_state="working")
+                raise RuntimeError(f"Could not start isolated task workflow: {exc}") from exc
     finally:
         (workspace / "TODO.md").write_text(original_workspace_todo, encoding="utf-8")
 

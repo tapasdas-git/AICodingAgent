@@ -18,7 +18,11 @@ class ExecuteTaskTestsEnvironmentTests(unittest.TestCase):
             test_dir.mkdir(parents=True)
             trace_path = root / "TASK-999.logs"
             trace_path.touch()
-            completed = subprocess.CompletedProcess([], 0, stdout="1 passed\n")
+            result_trace = root / "TASK-999_test.log"
+            result_trace.touch()
+            completed = subprocess.CompletedProcess(
+                [], 0, stdout="test_sample.py::test_addition PASSED [100%]\n1 passed\n"
+            )
 
             environment = {
                 "TASK_ID": "TASK-999",
@@ -29,6 +33,8 @@ class ExecuteTaskTestsEnvironmentTests(unittest.TestCase):
                 patch.dict(os.environ, environment, clear=True),
                 patch.object(workflow_tools, "ROOT", root),
                 patch.object(workflow_tools, "task_trace_path", return_value=trace_path),
+                patch.object(workflow_tools, "test_result_logging_enabled", return_value=True),
+                patch.object(workflow_tools, "test_trace_path", return_value=result_trace) as log_path,
                 patch.object(workflow_tools.subprocess, "run", return_value=completed) as run,
             ):
                 result = json.loads(workflow_tools.execute_task_tests())
@@ -36,9 +42,39 @@ class ExecuteTaskTestsEnvironmentTests(unittest.TestCase):
             self.assertEqual(result["status"], "passed")
             command = run.call_args.args[0]
             self.assertEqual(command[:3], [str(Path(sys.executable).resolve()), "-m", "pytest"])
+            self.assertEqual(command[3], "-v")
             self.assertEqual(run.call_args.kwargs["cwd"], root)
             pythonpath = run.call_args.kwargs["env"]["PYTHONPATH"].split(os.pathsep)
             self.assertEqual(pythonpath[:3], [str(root), str(root / "src"), "/launcher/src"])
+            log_path.assert_called_once_with("TASK-999")
+            self.assertIn(
+                "test_sample.py::test_addition PASSED",
+                result_trace.read_text(encoding="utf-8"),
+            )
+
+    def test_test_result_log_can_be_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            (root / "workspace" / "sample_task" / "test").mkdir(parents=True)
+            trace_path = root / "TASK-998.logs"
+            trace_path.touch()
+            completed = subprocess.CompletedProcess([], 0, stdout="1 passed\n")
+            with (
+                patch.dict(
+                    os.environ,
+                    {"TASK_ID": "TASK-998", "TASK_DIR": "workspace/sample_task"},
+                    clear=True,
+                ),
+                patch.object(workflow_tools, "ROOT", root),
+                patch.object(workflow_tools, "task_trace_path", return_value=trace_path),
+                patch.object(workflow_tools, "test_result_logging_enabled", return_value=False),
+                patch.object(workflow_tools, "test_trace_path") as log_path,
+                patch.object(workflow_tools.subprocess, "run", return_value=completed),
+            ):
+                result = json.loads(workflow_tools.execute_task_tests())
+
+            self.assertEqual(result["status"], "passed")
+            log_path.assert_not_called()
 
 
 class RecordStageEventTests(unittest.TestCase):

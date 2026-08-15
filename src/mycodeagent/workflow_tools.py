@@ -9,7 +9,14 @@ from pathlib import Path
 
 from .paths import ROOT
 from .platform_utils import find_project_python
-from .tracing import task_raw_trace_path, task_trace_path, write_trace, write_trace_output
+from .tracing import (
+    task_raw_trace_path,
+    task_trace_path,
+    test_result_logging_enabled,
+    test_trace_path,
+    write_trace,
+    write_trace_output,
+)
 
 ALLOWED_STAGE_EVENTS = {
     "IMPLEMENTATION_STARTED",
@@ -218,7 +225,8 @@ def execute_task_tests() -> str:
 
     configured_python = os.environ.get("MYCODEAGENT_TEST_PYTHON", "").strip()
     python_executable = str(find_project_python(ROOT, configured_python or None))
-    command = [python_executable, "-m", "pytest", "-q", str(test_dir)]
+    # Verbose mode emits one result line per test for the task test log.
+    command = [python_executable, "-m", "pytest", "-v", str(test_dir)]
     test_environment = os.environ.copy()
     python_paths = [str(ROOT), str(ROOT / "src")]
     inherited_pythonpath = test_environment.get("PYTHONPATH", "").strip()
@@ -231,6 +239,12 @@ def execute_task_tests() -> str:
         _write_stage_event(trace_path, "IMPLEMENTATION_COMPLETED", last_event[1] or 1)
     write_trace(trace_path, "Orchestrator triggered tests")
     write_trace(trace_path, "Tests started")
+    result_trace_path = test_trace_path(task_id) if test_result_logging_enabled() else None
+    if result_trace_path is not None:
+        write_trace(
+            result_trace_path,
+            f"TEST_STARTED task={task_id} command={subprocess.list2cmdline(command)}",
+        )
     try:
         completed = subprocess.run(
             command,
@@ -245,10 +259,21 @@ def execute_task_tests() -> str:
     except subprocess.TimeoutExpired as exc:
         output = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         write_trace(trace_path, "Tests timed out")
+        if result_trace_path is not None:
+            write_trace(result_trace_path, f"TEST_FINISHED task={task_id} status=timeout")
+            if output:
+                write_trace_output(result_trace_path, f"{output.rstrip()}\n")
         return json.dumps({"status": "timeout", "task_id": task_id, "command": command, "output": output})
 
     status = "passed" if completed.returncode == 0 else "failed"
     write_trace(trace_path, f"Tests {status} (exit code {completed.returncode})")
+    if result_trace_path is not None:
+        write_trace(
+            result_trace_path,
+            f"TEST_FINISHED task={task_id} status={status} exit_code={completed.returncode}",
+        )
+        if completed.stdout:
+            write_trace_output(result_trace_path, f"{completed.stdout.rstrip()}\n")
     if status == "failed":
         bounded_output = completed.stdout[-4000:].strip()
         write_trace_output(task_raw_trace_path(task_id), f"TEST_FAILURE_OUTPUT {bounded_output}\n")

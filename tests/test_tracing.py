@@ -6,10 +6,28 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mycodeagent.protocol import extract_structured_report
-from mycodeagent.tracing import error, info, print_structured_workflow_output
+from mycodeagent.tracing import (
+    error,
+    info,
+    print_structured_workflow_output,
+    test_result_logging_enabled as is_test_result_logging_enabled,
+)
 
 
 class StructuredWorkflowOutputTests(unittest.TestCase):
+    def test_test_result_logging_can_be_disabled_in_runtime_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings_path = Path(temp_dir) / "workflow_runtime.toml"
+            settings_path.write_text("test_result_logging_enabled = false\n", encoding="utf-8")
+            with patch("mycodeagent.tracing.SETTINGS_PATH", settings_path):
+                self.assertFalse(is_test_result_logging_enabled())
+
+    def test_test_result_logging_defaults_to_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_path = Path(temp_dir) / "missing.toml"
+            with patch("mycodeagent.tracing.SETTINGS_PATH", missing_path):
+                self.assertTrue(is_test_result_logging_enabled())
+
     def test_extracts_task_report_without_newline_before_heading(self) -> None:
         report = """# Task workflow: TASK-109
 ## Outcome

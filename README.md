@@ -280,6 +280,14 @@ workflow start/finish markers, timestamps, elapsed duration, stage transitions,
 test outcomes, and timeout or launch errors. To keep the terminal readable, it
 shows only the final structured report. Monitor an active run in another terminal:
 
+Deterministic pytest runs append their command, status, exit code, individual
+test results, and summary to `logs/<TASK_ID>_test.log`. Disable task test logs
+while retaining per-task lifecycle status in `workflow_runtime.toml`:
+
+```toml
+test_result_logging_enabled = false
+```
+
 tail -f logs/TASK-101.logs
 
 # Verbose agent output
