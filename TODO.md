@@ -82,7 +82,7 @@
 - Approved by: Tech Lead
 - Approval reference: 2026-07-30 Arch Sync
 
-## TASK-047 | ready | P3 | Create a utility module in `prime_checker` to verify prime numbers and return prime factors.
+## TASK-047 | failed | P3 | Create a utility module in `prime_checker` to verify prime numbers and return prime factors.
 - Outcome: Pure Python module and unit tests for palindrome detection, handling edge cases, case-insensitivity, and special characters.
 - Depends on: None
 - Repository: https://github.com/tapasdas-git/MyOmnigent.git
@@ -155,7 +155,7 @@ Acceptance:
 - Approved by: Tech Lead
 - Approval reference: 2026-08-02 mode-3 smoke-test authorization
 
-## TASK-103 | ready | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
+## TASK-103 | reviewed | P2 | [FEATURE] Build Currency Exchange Engine in `workspace/currency_exchange/`
 - Outcome: Implement a pure Python currency exchange and conversion module with Pydantic schema validation and mock exchange rate lookup tools.
 - Depends on: None
 - Repository: https://github.com/tapasdas-git/MyOCodeAgent.git

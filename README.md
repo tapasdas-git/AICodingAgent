@@ -434,7 +434,7 @@ mycodeagent submit  --mode 1
 
 ## to process all ready task
 
-mycodeagent submit --mode 2 --all
+mycodeagent submit --all
 
 
 
