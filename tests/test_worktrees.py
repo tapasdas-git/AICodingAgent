@@ -71,3 +71,22 @@ def test_runtime_module_overlay_uses_current_tools_and_restores_worktree() -> No
             assert (target_package / module_name).read_text(
                 encoding="utf-8"
             ) == f"stale {module_name}\n"
+
+
+def test_registered_worktree_is_reused_for_task_retry() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir).resolve()
+        existing = root / ".mycodeagent-worktrees" / "issue-23"
+        existing.mkdir(parents=True)
+        porcelain = (
+            f"worktree {root}\nHEAD abc\nbranch refs/heads/main\n\n"
+            f"worktree {existing}\nHEAD def\nbranch refs/heads/feature/issue-23\n"
+        )
+        with (
+            patch.object(worktrees, "ROOT", root),
+            patch.object(worktrees, "_branch_exists", return_value=True),
+            patch.object(worktrees, "_git", return_value=porcelain),
+        ):
+            result = worktrees._create_worktree("ISSUE-23")
+
+    assert result == existing

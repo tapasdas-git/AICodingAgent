@@ -75,6 +75,20 @@ def _branch_exists(branch: str) -> bool:
     ).returncode == 0
 
 
+def _registered_worktree(branch: str) -> Path | None:
+    """Return the existing worktree registered for a local branch, if any."""
+    records = _git("worktree", "list", "--porcelain").split("\n\n")
+    branch_ref = f"branch refs/heads/{branch}"
+    for record in records:
+        lines = record.splitlines()
+        if branch_ref not in lines:
+            continue
+        worktree_line = next((line for line in lines if line.startswith("worktree ")), None)
+        if worktree_line is not None:
+            return Path(worktree_line.removeprefix("worktree ")).resolve()
+    return None
+
+
 def _default_remote_branch() -> str:
     """Resolve origin's default branch with main/master fallbacks."""
     git = resolve_executable("git")
@@ -97,10 +111,15 @@ def _default_remote_branch() -> str:
 def _create_worktree(task_id: str) -> Path:
     branch = f"feature/{task_id.lower()}"
     destination = _worktree_path(task_id)
+    registered = _registered_worktree(branch) if _branch_exists(branch) else None
+    if registered is not None:
+        if not registered.is_dir():
+            raise RuntimeError(f"Registered worktree path does not exist: {registered}")
+        return registered
     if destination.exists():
-        raise RuntimeError(f"Worktree path already exists: {destination}")
+        raise RuntimeError(f"Worktree path already exists but is not registered for {branch}: {destination}")
     if _branch_exists(branch):
-        raise RuntimeError(f"Branch already exists: {branch}. Reuse or remove its existing worktree explicitly.")
+        raise RuntimeError(f"Branch already exists without a registered worktree: {branch}")
 
     _git("fetch", "origin")
     base_branch = _default_remote_branch()

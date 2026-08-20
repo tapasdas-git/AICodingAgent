@@ -26,3 +26,4 @@ tests/test_tracing.py
 tests/test_workflow_config.py
 tests/test_workflow_helpers.py
 tests/test_workflow_tools.py
+tests/test_worktrees.py

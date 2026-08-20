@@ -25,9 +25,9 @@ test_result_logging_enabled = true
 time_limit_seconds = 1800
 
 token_budget = 400000
-supervisor_token_budget = 75000
-implementer_token_budget = 100000
-reviewer_token_budget = 60000
+supervisor_token_budget = 150000
+implementer_token_budget = 175000
+reviewer_token_budget = 75000
 
 # [models.claude_implementer]
 #provider = "anthropic"

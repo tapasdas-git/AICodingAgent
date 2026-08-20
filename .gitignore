@@ -16,3 +16,7 @@ htmlcov/
 logs/
 .mycodeagent-task-state.lock
 .mycodeagent-worktrees/
+
+# Generated task implementation workspaces
+workspace/
+workspace-worktrees/

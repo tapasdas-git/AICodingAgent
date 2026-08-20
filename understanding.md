@@ -665,4 +665,33 @@ python -m pytest -q workspace/flight_booking_agent/test
 
 # Delivery is a separate, explicitly authorized action.
 mycodeagent deliver TASK-101 --approved
+
+PYTHONPATH=src venv/bin/python -m mycodeagent github-submit \
+  --owner tapasdas-git \
+  --project 4 \
+  --mode 1
+
+  PYTHONPATH=src venv/bin/python -m mycodeagent github-submit --owner tapasdas-git --project 4 --worktree --mode 3
+
+  gh auth status
+gh auth refresh -h github.com -s read:project
+git --version
+omnigent --version
 ```
+
+Create and Activate Virtual Environment
+
+python3 -m venv venv
+
+# macOS/Linux
+source venv/bin/activate
+
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+
+# Windows Command Prompt
+venv\Scripts\activate.bat
+
+# Install MyCodeAgent in Editable Mode
+
+pip install -e .

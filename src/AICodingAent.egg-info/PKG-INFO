@@ -175,6 +175,28 @@ Run the default mode (mode 2):
 mycodeagent submit
 ```
 
+### Token budgets and usage audit
+
+Task workflows use native Codex goal accounting with separate task, supervisor,
+implementer, and reviewer ceilings configured in `workflow_runtime.toml`:
+
+```toml
+token_budget = 400000
+supervisor_token_budget = 75000
+implementer_token_budget = 100000
+reviewer_token_budget = 60000
+```
+
+Override the combined task ceiling for one invocation with
+`--token-budget`. Usage is aggregated in `logs/<TASK_ID>_usage.json` and
+appended live to `logs/<TASK_ID>.logs`. Full redacted implementer, reviewer,
+and supervisor reports are framed and deduplicated in
+`logs/<TASK_ID>.raw.logs` so review failures remain auditable.
+
+```bash
+mycodeagent submit --mode 2 --token-budget 400000
+```
+
 ```bash
 # Mode 1 — implementation only
 mycodeagent submit --mode 1
@@ -265,6 +287,14 @@ mycodeagent review TASK-101 --remediate --timeout-seconds 1800
 mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
 ```
 
+## To test a perticular task post completion
+
+cd /Users/tapasdas/work/AICodingAgent/workspace-worktrees/task-015
+
+PYTHONPATH="$PWD:$PWD/src" \
+/Users/tapasdas/work/AICodingAgent/venv/bin/python \
+-m pytest -vv workspace/calculator/test
+
 ### Runtime logging
 
 Console diagnostic levels are configured independently in `workflow_runtime.toml`:
@@ -286,6 +316,14 @@ and verbose agent output to `logs/<TASK_ID>.raw.logs`. The lifecycle trace conta
 workflow start/finish markers, timestamps, elapsed duration, stage transitions,
 test outcomes, and timeout or launch errors. To keep the terminal readable, it
 shows only the final structured report. Monitor an active run in another terminal:
+
+Deterministic pytest runs append their command, status, exit code, individual
+test results, and summary to `logs/<TASK_ID>_test.log`. Disable task test logs
+while retaining per-task lifecycle status in `workflow_runtime.toml`:
+
+```toml
+test_result_logging_enabled = false
+```
 
 tail -f logs/TASK-101.logs
 
@@ -393,9 +431,12 @@ MyCodeAgent supports Python 3.11+ on Windows, macOS, and Linux. `git`, `gh`, and
 runtime. Conventional `venv` and `.venv` interpreters are detected under both
 `Scripts/python.exe` and `bin/python`.
 
-Set `MYCODEAGENT_WORKTREE_ROOT` to use a shorter worktree location, which can
-help Windows installations with restrictive path-length policies. Git pathspecs
-are emitted with forward slashes on every platform. The runtime uses
+Set `worktree_root` in `workflow_runtime.toml` to choose where task worktrees
+are created. Relative paths are resolved from the primary repository root; the
+default `.mycodeagent-worktrees` path is ignored by Git. Set
+`MYCODEAGENT_WORKTREE_ROOT` to override this location for one process, which can
+also help Windows installations with restrictive path-length policies. Git
+pathspecs are emitted with forward slashes on every platform. The runtime uses
 platform-specific process-tree cleanup and portable pipe streaming.
 
 For long Windows repositories, enable Git long paths if organizational policy

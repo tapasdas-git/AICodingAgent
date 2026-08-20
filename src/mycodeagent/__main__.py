@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .delivery import run_approved_delivery
+from .github_tasks import select_github_project_task
 from .orchestration import execute_staged_verification
 from .paths import ROOT
 from .runner import execute_omnigent_stage, positive_timeout, positive_token_budget
@@ -31,6 +32,16 @@ def build_parser() -> argparse.ArgumentParser:
     submit_parser.add_argument("--timeout-seconds", type=positive_timeout, default=None, help="Maximum runtime for the complete supervisor workflow.")
     submit_parser.add_argument("--token-budget", type=positive_token_budget, default=None, help="Maximum tokens for the complete task workflow.")
 
+    github_parser = subparsers.add_parser(
+        "github-submit", help="Run the first OPEN issue in Todo status from a GitHub Project"
+    )
+    github_parser.add_argument("--owner", required=True, help="GitHub user or organization owning the project")
+    github_parser.add_argument("--project", required=True, type=int, help="GitHub Project number")
+    github_parser.add_argument("--mode", choices=("1", "2", "3"), default="2", help="1=implementation only; 2=implementation and review (default); 3=implementation, review, and PR.")
+    github_parser.add_argument("--worktree", action="store_true", help="Create an isolated feature worktree for the selected issue")
+    github_parser.add_argument("--timeout-seconds", type=positive_timeout, default=None, help="Maximum runtime for the complete workflow")
+    github_parser.add_argument("--token-budget", type=positive_token_budget, default=None, help="Maximum tokens for the complete workflow")
+
     for stage_cmd in ("run", "verify", "review", "deliver"):
         stage_parser = subparsers.add_parser(stage_cmd, help=f"Run the '{stage_cmd}' workflow stage")
         stage_parser.add_argument("task_id", help="Task ID (e.g., TASK-101)")
@@ -52,7 +63,35 @@ def main() -> int:
         build_parser().print_help()
         return 1
 
-    # Load the task registry once so every command works from the same TODO view.
+    if args.command == "github-submit":
+        try:
+            issue_todo, issue_task_id = select_github_project_task(args.owner, args.project)
+        except RuntimeError as exc:
+            print(f"GitHub task selection failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Selected GitHub task {issue_task_id} from {issue_todo}")
+        if args.worktree:
+            try:
+                return run_submission_in_worktree(
+                    issue_todo,
+                    task_id=issue_task_id,
+                    mode=args.mode,
+                    timeout_seconds=args.timeout_seconds,
+                    token_budget=args.token_budget,
+                )
+            except (RuntimeError, ValueError) as exc:
+                print(f"Worktree workflow refused: {exc}", file=sys.stderr)
+                return 1
+        return submit_ready_queue(
+            issue_todo,
+            timeout_seconds=args.timeout_seconds,
+            token_budget=args.token_budget,
+            once=True,
+            stop_on_error=True,
+            mode=args.mode,
+        )
+
+    # Load the task registry once so every TODO-backed command uses the same view.
     try:
         tasks = parse_todo_file(args.todo)
     except ValueError as exc:

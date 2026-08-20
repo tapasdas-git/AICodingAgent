@@ -236,6 +236,32 @@ mycodeagent submit --all --stop-on-error
 
 For safety, batch mode cannot be combined with mode 3 because it could create multiple PRs. `--all --worktree` is not supported yet; mode-3 worktree runs currently process one ready task per command.
 
+### GitHub Project task ingestion
+
+Keep `submit` for `TODO.md`. Use `github-submit` to select the first GitHub
+Project item whose project status is `Todo` and whose linked issue is `OPEN`:
+
+```bash
+mycodeagent github-submit --owner tapasdas-git --project 4 --mode 2
+```
+
+Run the selected issue in an isolated worktree and deliver it after approval:
+
+```bash
+mycodeagent github-submit --owner tapasdas-git --project 4 --worktree --mode 3
+```
+
+The issue body does not need a TODO heading or embedded state. MyCodeAgent
+creates a private, TODO-compatible work order under `logs/work-orders/` and
+uses the issue title/body as the task specification. GitHub remains read-only;
+workflow state is recorded in the local work order. Project queries require
+`gh auth refresh -s read:project`.
+
+An OPEN/Todo issue can be retried when its local work order is `failed`,
+`implemented`, or `reviewed`. Issues currently `working` or already `delivered`
+are not selected again. A retry reuses the issue's registered feature worktree
+and branch so partial implementation remains available.
+
 ### Parallel task worktrees
 
 Use one Git worktree per task when a task needs its own pull request. Python
