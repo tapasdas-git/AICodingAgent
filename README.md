@@ -168,6 +168,28 @@ Run the default mode (mode 2):
 mycodeagent submit
 ```
 
+### Token budgets and usage audit
+
+Task workflows use native Codex goal accounting with separate task, supervisor,
+implementer, and reviewer ceilings configured in `workflow_runtime.toml`:
+
+```toml
+token_budget = 400000
+supervisor_token_budget = 75000
+implementer_token_budget = 100000
+reviewer_token_budget = 60000
+```
+
+Override the combined task ceiling for one invocation with
+`--token-budget`. Usage is aggregated in `logs/<TASK_ID>_usage.json` and
+appended live to `logs/<TASK_ID>.logs`. Full redacted implementer, reviewer,
+and supervisor reports are framed and deduplicated in
+`logs/<TASK_ID>.raw.logs` so review failures remain auditable.
+
+```bash
+mycodeagent submit --mode 2 --token-budget 400000
+```
+
 ```bash
 # Mode 1 — implementation only
 mycodeagent submit --mode 1

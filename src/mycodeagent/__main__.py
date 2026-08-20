@@ -10,7 +10,7 @@ from pathlib import Path
 from .delivery import run_approved_delivery
 from .orchestration import execute_staged_verification
 from .paths import ROOT
-from .runner import execute_omnigent_stage, positive_timeout
+from .runner import execute_omnigent_stage, positive_timeout, positive_token_budget
 from .submission import submit_ready_queue
 from .tasks import get_task_spec, parse_todo_file
 from .worktrees import run_submission_in_worktree
@@ -29,12 +29,15 @@ def build_parser() -> argparse.ArgumentParser:
     submit_parser.add_argument("--worktree", action="store_true", help="Create an isolated feature worktree from origin's default branch for one task.")
     submit_parser.add_argument("--stop-on-error", action="store_true", help="Stop the queue after the first failed task (default: continue to later tasks).")
     submit_parser.add_argument("--timeout-seconds", type=positive_timeout, default=None, help="Maximum runtime for the complete supervisor workflow.")
+    submit_parser.add_argument("--token-budget", type=positive_token_budget, default=None, help="Maximum tokens for the complete task workflow.")
 
     for stage_cmd in ("run", "verify", "review", "deliver"):
         stage_parser = subparsers.add_parser(stage_cmd, help=f"Run the '{stage_cmd}' workflow stage")
         stage_parser.add_argument("task_id", help="Task ID (e.g., TASK-101)")
         stage_parser.add_argument("--todo", type=Path, default=ROOT / "TODO.md", help="Path to TODO.md file")
         stage_parser.add_argument("--timeout-seconds", type=positive_timeout, default=None, help="Maximum runtime for the selected workflow invocation.")
+        if stage_cmd != "deliver":
+            stage_parser.add_argument("--token-budget", type=positive_token_budget, default=None, help="Maximum tokens for the selected workflow invocation.")
         if stage_cmd == "deliver":
             stage_parser.add_argument("--approved", action="store_true", help="Explicitly authorize delivery after an APPROVED review.")
         if stage_cmd == "review":
@@ -71,12 +74,12 @@ def main() -> int:
                 print("No task with state 'ready' found in TODO.md.", file=sys.stderr)
                 return 1
             try:
-                return run_submission_in_worktree(args.todo, task_id=selected_task, mode=args.mode, timeout_seconds=args.timeout_seconds)
+                return run_submission_in_worktree(args.todo, task_id=selected_task, mode=args.mode, timeout_seconds=args.timeout_seconds, token_budget=args.token_budget)
             except (RuntimeError, ValueError) as exc:
                 print(f"Worktree workflow refused: {exc}", file=sys.stderr)
                 return 1
         # Submit one ready task by default, or a sequential queue with --all.
-        return submit_ready_queue(args.todo, timeout_seconds=args.timeout_seconds, once=not args.all, stop_on_error=args.stop_on_error, mode=args.mode)
+        return submit_ready_queue(args.todo, timeout_seconds=args.timeout_seconds, token_budget=args.token_budget, once=not args.all, stop_on_error=args.stop_on_error, mode=args.mode)
 
     # Resolve and validate the explicitly named task for stage-level commands.
     target_task = args.task_id.upper()
@@ -94,6 +97,7 @@ def main() -> int:
         print(f"Running implementation and review loop for {target_task} without delivery...")
         return execute_staged_verification(
             task=task, todo_path=args.todo, timeout_seconds=args.timeout_seconds,
+            token_budget=args.token_budget,
             implement_first=True, remediate=True,
         ).exit_code
     if args.command == "review":
@@ -102,6 +106,7 @@ def main() -> int:
             print(f"Running review and targeted remediation loop for {target_task} without delivery...")
             return execute_staged_verification(
                 task=task, todo_path=args.todo, timeout_seconds=args.timeout_seconds,
+                token_budget=args.token_budget,
                 implement_first=False, remediate=True,
             ).exit_code
         else:
@@ -109,7 +114,7 @@ def main() -> int:
             return execute_omnigent_stage(
                 f"Review {target_task} once and return APPROVED or CHANGES_REQUESTED. Do not modify files or perform delivery.",
                 target_stage="review_change", timeout_seconds=args.timeout_seconds,
-                task=task, todo_path=args.todo,
+                token_budget=args.token_budget, task=task, todo_path=args.todo,
             ).exit_code
     if args.command == "deliver" and not args.approved:
         # Require explicit operator approval before any Git/GitHub side effect.
@@ -126,6 +131,7 @@ def main() -> int:
         return execute_omnigent_stage(
             f"Target stage troubleshooting for {target_task} using implement_task.",
             target_stage="implement_task", timeout_seconds=args.timeout_seconds, task=task, todo_path=args.todo,
+            token_budget=args.token_budget,
         ).exit_code
 
 

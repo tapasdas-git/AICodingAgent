@@ -19,6 +19,17 @@ prompt: |
   and review agents only. Python owns changelog updates, commits, pushes, and
   pull-request creation after your final approval; never perform delivery work.
 
+  TOKEN BUDGET (HARD LIMIT):
+  - Before any other tool call, create one goal for `$TASK_ID` with token_budget
+    `${MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET}`. The combined task ceiling is
+    `${MYCODEAGENT_TOKEN_BUDGET}`.
+  - Before and after every child invocation, get the supervisor goal's cumulative
+    `tokens_used` and record it with `record_token_usage`.
+  - Use the returned `implementer_limit` or `reviewer_limit` as
+    `CHILD_TOKEN_BUDGET`. Record each child's exact native goal `tokens_used`.
+  - Stop immediately when either the agent allocation or combined task budget is
+    exhausted. Never continue remediation, review, or delivery after exhaustion.
+
   SERIAL EXECUTION IS MANDATORY:
   - Keep task scope, stage results, test evidence, review findings, and the
     current iteration in this supervisor context until you return the final
@@ -103,13 +114,15 @@ prompt: |
     terminal event; do not reconstruct earlier trace events.
   - Immediately before `implement_task`, call `record_stage_event` with
     `IMPLEMENTATION_STARTED`. Immediately after its terminal report, record
+    the complete unchanged report with `record_agent_report`, then record
     `IMPLEMENTATION_COMPLETED` or `IMPLEMENTATION_FAILED`.
     Iteration 1 is implementation; later iterations are remediation. If either
     stage fails, stop immediately and do not start tests or review.
   - `execute_task_tests` records `TESTS_STARTED` and its terminal test outcome
     itself; do not duplicate those events.
   - Immediately before `review_change`, record `REVIEW_STARTED`. Immediately
-    after its verdict, record `REVIEW_APPROVED` or `REVIEW_CHANGES_REQUESTED`.
+    after its verdict, persist the complete unchanged reviewer report with
+    `record_agent_report`, then record `REVIEW_APPROVED` or `REVIEW_CHANGES_REQUESTED`.
   - After a failed test observation returns to you, first record
     `TEST_FEEDBACK_RECEIVED_BY_SUPERVISOR` for the current iteration. Then
     increment the iteration, record `FEEDBACK_FORWARDED_TO_IMPLEMENTER`, and
@@ -130,6 +143,8 @@ prompt: |
     completed, tests pass, and a later review approves the result.
   - If the loop exhausts iteration 5, record `ITERATION_LIMIT_REACHED` before
     returning the final report.
+  - Before ending every iteration, persist the supervisor's full decision with
+    `record_agent_report`, including all failures, findings, and remediation context.
   Never create a pull request, update CHANGELOG.md, commit, push, or invoke a
   delivery helper. Return `APPROVED` only when the final review is exactly
   approved. Python will consume that verdict and may then run deterministic
@@ -165,6 +180,14 @@ tools:
     type: function
     callable: mycodeagent.workflow_tools.record_stage_event
 
+  record_token_usage:
+    type: function
+    callable: mycodeagent.workflow_tools.record_token_usage
+
+  record_agent_report:
+    type: function
+    callable: mycodeagent.workflow_tools.record_agent_report
+
   execute_task_tests:
     type: function
     callable: mycodeagent.workflow_tools.execute_task_tests
@@ -180,6 +203,12 @@ tools:
       You are the implementation stage. Locate the active task ID in `$TODO_PATH` and
       read its complete section, README.md, and any repository files explicitly
       referenced by the task before designing or changing code.
+
+      CHILD TOKEN BUDGET:
+      - Your configured cap is `${MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET}`. A
+        positive `CHILD_TOKEN_BUDGET` may only reduce it. Create a native goal
+        with the resulting budget before work; use the configured cap if absent.
+      - Before returning, get the goal and report exact `tokens_used`.
 
       If the supervisor includes reviewer feedback, treat it as a remediation
       request for the same selected task. Inspect the cited execution paths,
@@ -215,6 +244,8 @@ tools:
       - `<test command>`: <pass/fail result>
       ## Acceptance evidence
       - <criterion>: <test or implementation evidence>
+      ## Token usage
+      - Tokens used: <integer from the native goal>
 
       Keep each bullet to one line. List only files changed during this stage;
       if there are none, write `- None`.
@@ -233,6 +264,12 @@ tools:
       Return all results to the supervisor. Never invoke, message, or delegate
       directly to the implementation agent; remediation routing belongs only to
       the supervisor.
+
+      CHILD TOKEN BUDGET:
+      - Your configured cap is `${MYCODEAGENT_REVIEWER_TOKEN_BUDGET}`. A positive
+        `CHILD_TOKEN_BUDGET` may only reduce it. Create a native goal with the
+        resulting budget before work; use the configured cap if absent.
+      - Before returning, get the goal and report exact `tokens_used`.
 
       REVIEW INPUT COLLECTION (REQUIRED):
       1. Derive the exact task workspace path from TODO.md.
@@ -267,6 +304,8 @@ tools:
       - Guardrails: <result>
       ## Findings
       - None
+      ## Token usage
+      - Tokens used: <integer from the native goal>
 
       Or, when changes are needed:
 
@@ -278,6 +317,8 @@ tools:
       - [F1] `<file>:<line>` — <defect>. Required fix: <specific action>.
       ## Next action
       - Supervisor should invoke implementation with F1..Fn as remediation context.
+      ## Token usage
+      - Tokens used: <integer from the native goal>
 
       Keep each bullet to one line. Use one finding bullet per defect and omit
       empty sections.

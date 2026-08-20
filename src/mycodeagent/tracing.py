@@ -93,6 +93,15 @@ def test_trace_path(task_id: str) -> Path:
     return trace_path
 
 
+def token_usage_path(task_id: str) -> Path:
+    """Return the deterministic task-level token usage ledger path."""
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    usage_path = TRACE_DIR / f"{task_id}_usage.json"
+    usage_path.touch(exist_ok=True)
+    restrict_file_permissions(usage_path)
+    return usage_path
+
+
 def write_trace(trace_path: Path, message: str) -> None:
     timestamp = datetime.now(timezone.utc).isoformat()
     with trace_path.open("a", encoding="utf-8") as trace_file:

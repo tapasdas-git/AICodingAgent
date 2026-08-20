@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -14,9 +15,85 @@ from .tracing import (
     task_trace_path,
     test_result_logging_enabled,
     test_trace_path,
+    token_usage_path,
     write_trace,
     write_trace_output,
 )
+
+TOKEN_AGENTS = {"supervisor", "implementer", "reviewer"}
+REPORT_OUTCOMES = {"COMPLETED", "FAILED", "APPROVED", "CHANGES_REQUESTED", "REMEDIATE", "BLOCKED"}
+
+
+def record_agent_report(agent: str, iteration: int, outcome: str, report: str) -> str:
+    """Persist a full redacted, deduplicated agent report in the raw log."""
+    task_id = os.environ.get("TASK_ID", "").strip()
+    agent, outcome = agent.strip().lower(), outcome.strip().upper()
+    if not task_id or agent not in TOKEN_AGENTS or outcome not in REPORT_OUTCOMES:
+        return json.dumps({"status": "error", "error": "invalid task, agent, or outcome"})
+    if not isinstance(iteration, int) or isinstance(iteration, bool) or not 1 <= iteration <= 5:
+        return json.dumps({"status": "error", "error": "iteration must be 1 through 5"})
+    if not isinstance(report, str) or not report.strip() or len(report) > 200_000:
+        return json.dumps({"status": "error", "error": "report must contain 1 through 200000 characters"})
+    report = report.strip()
+    digest = hashlib.sha256(f"{agent}\0{iteration}\0{outcome}\0{report}".encode()).hexdigest()[:16]
+    marker = f"===== AGENT_REPORT task={task_id} agent={agent} iteration={iteration} outcome={outcome} digest={digest} ====="
+    raw_path = task_raw_trace_path(task_id)
+    if marker in raw_path.read_text(encoding="utf-8"):
+        return json.dumps({"status": "already_recorded", "digest": digest})
+    write_trace_output(raw_path, f"\n{marker}\n{report}\n===== END_AGENT_REPORT digest={digest} =====\n")
+    write_trace(task_trace_path(task_id), f"Agent report persisted: agent={agent} iteration={iteration} outcome={outcome} digest={digest}")
+    return json.dumps({"status": "recorded", "digest": digest})
+
+
+def record_token_usage(agent: str, iteration: int, tokens_used: int) -> str:
+    """Aggregate native goal usage across supervisor and child agents."""
+    task_id = os.environ.get("TASK_ID", "").strip()
+    agent = agent.strip().lower()
+    if not task_id or agent not in TOKEN_AGENTS:
+        return json.dumps({"status": "error", "error": "invalid task or agent"})
+    if not isinstance(iteration, int) or isinstance(iteration, bool) or not 1 <= iteration <= 5:
+        return json.dumps({"status": "error", "error": "iteration must be 1 through 5"})
+    if not isinstance(tokens_used, int) or isinstance(tokens_used, bool) or tokens_used < 0:
+        return json.dumps({"status": "error", "error": "tokens_used must be non-negative"})
+    if agent != "supervisor" and tokens_used == 0:
+        return json.dumps({"status": "error", "error": "zero child usage was not measured"})
+    path = token_usage_path(task_id)
+    try:
+        ledger = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return json.dumps({"status": "error", "error": "token ledger unavailable"})
+    snapshots, children = ledger.setdefault("supervisor_snapshots", {}), ledger.setdefault("children", {})
+    previous = max((int(v) for v in snapshots.values()), default=0)
+    delta = 0
+    if agent == "supervisor":
+        if tokens_used < previous:
+            return json.dumps({"status": "error", "error": "supervisor usage cannot decrease"})
+        delta = tokens_used - previous
+        snapshots[str(iteration)] = tokens_used
+    else:
+        key = f"{agent}:{iteration}"
+        if key in children and children[key] != tokens_used:
+            return json.dumps({"status": "error", "error": f"usage already recorded for {key}"})
+        children[key] = tokens_used
+    supervisor_total = max((int(v) for v in snapshots.values()), default=0)
+    child_total = sum(int(v) for v in children.values())
+    total, budget = supervisor_total + child_total, int(ledger["budget"])
+    prior_iteration = max((int(v) for k, v in snapshots.items() if int(k) < iteration), default=0)
+    iteration_supervisor = int(snapshots.get(str(iteration), prior_iteration)) - prior_iteration
+    iteration_children = sum(int(v) for k, v in children.items() if k.endswith(f":{iteration}"))
+    remaining = max(0, budget - total)
+    caps = {name: int(os.environ[f"MYCODEAGENT_{name.upper()}_TOKEN_BUDGET"]) for name in TOKEN_AGENTS}
+    cap, agent_remaining = caps[agent], max(0, caps[agent] - tokens_used)
+    agent_status = "exhausted" if tokens_used >= cap else "active"
+    task_status = "exhausted" if total >= budget else "active"
+    ledger.update(supervisor_tokens=supervisor_total, child_tokens=child_total, total_tokens=total, remaining_tokens=remaining, exhausted=total >= budget)
+    path.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if agent == "supervisor":
+        message = f"Token usage snapshot (iteration {iteration}): agent=supervisor cumulative_tokens={tokens_used} delta_since_last_snapshot={delta} iteration_supervisor_tokens={iteration_supervisor} iteration_total={iteration_supervisor + iteration_children}"
+    else:
+        message = f"Child token usage (iteration {iteration}): agent={agent} invocation_tokens={tokens_used} iteration_child_tokens={iteration_children} iteration_total={iteration_supervisor + iteration_children}"
+    write_trace(task_trace_path(task_id), f"{message} agent_budget={cap} agent_remaining={agent_remaining} agent_status={agent_status} task_total={total}/{budget} task_remaining={remaining} task_status={task_status}")
+    return json.dumps({"status": "exhausted" if total >= budget or tokens_used >= cap else "recorded", "iteration_tokens": iteration_supervisor + iteration_children, "total_tokens": total, "remaining_tokens": remaining, "implementer_limit": min(caps["implementer"], remaining), "reviewer_limit": min(caps["reviewer"], remaining)})
 
 ALLOWED_STAGE_EVENTS = {
     "IMPLEMENTATION_STARTED",

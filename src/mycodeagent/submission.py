@@ -25,7 +25,8 @@ def final_review_is_approved(report: str | None) -> bool:
 
 
 def submit_ready_queue(
-    todo_path: Path, *, timeout_seconds: int | None, once: bool, stop_on_error: bool, mode: str
+    todo_path: Path, *, timeout_seconds: int | None, token_budget: int | None,
+    once: bool, stop_on_error: bool, mode: str
 ) -> int:
     """Process the first ready task, or an explicitly requested sequential batch."""
     processed = failures = 0
@@ -73,11 +74,12 @@ def submit_ready_queue(
         if mode == "1":
             workflow_result = execute_omnigent_stage(
                 prompt, target_stage="implement_task", timeout_seconds=timeout_seconds,
-                task=task, todo_path=todo_path,
+                token_budget=token_budget, task=task, todo_path=todo_path,
             )
         else:
             workflow_result = execute_staged_verification(
                 task=task, todo_path=todo_path, timeout_seconds=timeout_seconds,
+                token_budget=token_budget,
                 implement_first=True, remediate=True,
             )
         return_code = workflow_result.exit_code

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import queue
 import signal
@@ -28,6 +29,7 @@ from .tracing import (
     print_structured_workflow_output,
     task_raw_trace_path,
     task_trace_path,
+    token_usage_path,
     write_trace,
     write_trace_output,
 )
@@ -91,6 +93,13 @@ def positive_timeout(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("timeout must be greater than zero")
+    return parsed
+
+
+def positive_token_budget(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("token budget must be greater than zero")
     return parsed
 
 
@@ -207,6 +216,7 @@ def stream_process_output(
 def execute_omnigent_stage(
     prompt: str, *, target_stage: str | None = None, timeout_seconds: int | None = None,
     task: TaskSpec, todo_path: Path, delivery_approved: bool = False,
+    token_budget: int | None = None,
 ) -> WorkflowResult:
     """Render the workflow and execute one Omnigent invocation for a task."""
     with SETTINGS_PATH.open("rb") as settings_file:
@@ -224,6 +234,16 @@ def execute_omnigent_stage(
     timeout = int(settings["time_limit_seconds"]) if timeout_seconds is None else timeout_seconds
     if timeout <= 0:
         raise SystemExit("timeout must be greater than zero")
+    budget = settings.get("token_budget") if token_budget is None else token_budget
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+        raise SystemExit("token budget must be a positive integer")
+    agent_budgets = {
+        "supervisor": settings.get("supervisor_token_budget"),
+        "implementer": settings.get("implementer_token_budget"),
+        "reviewer": settings.get("reviewer_token_budget"),
+    }
+    if any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in agent_budgets.values()):
+        raise SystemExit("supervisor, implementer, and reviewer token budgets must be positive integers")
 
     trace_path = task_trace_path(task.task_id)
     environment = workflow_environment()
@@ -232,10 +252,24 @@ def execute_omnigent_stage(
         "TASK_ID": task.task_id,
         "TASK_DIR": repository_relative_posix(task.workspace, ROOT),
         "TODO_PATH": str(todo_path.resolve()),
+        "MYCODEAGENT_TOKEN_BUDGET": str(budget),
+        "MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET": str(agent_budgets["supervisor"]),
+        "MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET": str(agent_budgets["implementer"]),
+        "MYCODEAGENT_REVIEWER_TOKEN_BUDGET": str(agent_budgets["reviewer"]),
     })
     if delivery_approved:
         environment["MYCODEAGENT_REVIEW_STATUS"] = "APPROVED"
-    rendered_workflow = WORKFLOW_PATH.read_text(encoding="utf-8").replace("${OMNIGENT_WORKFLOW_MODEL}", str(settings["model"])).replace("${OMNIGENT_WORKFLOW_EFFORT}", str(settings["effort"]))
+    rendered_workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    replacements = {
+        "${OMNIGENT_WORKFLOW_MODEL}": str(settings["model"]),
+        "${OMNIGENT_WORKFLOW_EFFORT}": str(settings["effort"]),
+        "${MYCODEAGENT_TOKEN_BUDGET}": str(budget),
+        "${MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET}": str(agent_budgets["supervisor"]),
+        "${MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET}": str(agent_budgets["implementer"]),
+        "${MYCODEAGENT_REVIEWER_TOKEN_BUDGET}": str(agent_budgets["reviewer"]),
+    }
+    for placeholder, value in replacements.items():
+        rendered_workflow = rendered_workflow.replace(placeholder, value)
 
     with tempfile.TemporaryDirectory(prefix="omnigent-workflow-") as temp_dir:
         rendered_path = Path(temp_dir) / WORKFLOW_PATH.name
@@ -249,7 +283,11 @@ def execute_omnigent_stage(
             error(str(exc))
             return WorkflowResult(1)
         command = [omnigent_command, "run", str(rendered_path), "--harness", str(settings["harness"]), "--model", str(settings["model"]), "--no-session", "-p", prompt]
-        write_trace(trace_path, f"WORKFLOW_STARTED task={task.task_id} stage={target_stage or 'full'} timeout_seconds={timeout}")
+        usage_path = token_usage_path(task.task_id)
+        usage_path.write_text(json.dumps({"task_id": task.task_id, "budget": budget, "supervisor_snapshots": {}, "children": {}}, indent=2) + "\n", encoding="utf-8")
+        environment["MYCODEAGENT_TOKEN_USAGE_PATH"] = str(usage_path)
+        write_trace(trace_path, f"WORKFLOW_STARTED task={task.task_id} stage={target_stage or 'full'} timeout_seconds={timeout} token_budget={budget}")
+        write_trace(trace_path, f"Token budgets assigned: task={budget} supervisor={agent_budgets['supervisor']} implementer_per_invocation={agent_budgets['implementer']} reviewer_per_invocation={agent_budgets['reviewer']}")
         debug(f"Trace: {trace_path}")
         info(f"Workflow started at {datetime.now().astimezone().isoformat(timespec='seconds')}")
         try:

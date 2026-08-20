@@ -169,5 +169,37 @@ class RecordStageEventTests(unittest.TestCase):
         self.assertEqual(result["status"], "recorded")
 
 
+class TokenAuditTests(unittest.TestCase):
+    def test_records_usage_and_full_agent_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            usage = root / "TASK-999_usage.json"
+            raw = root / "TASK-999.raw.logs"
+            trace = root / "TASK-999.logs"
+            raw.touch()
+            trace.touch()
+            usage.write_text(
+                json.dumps({"task_id": "TASK-999", "budget": 1000, "supervisor_snapshots": {}, "children": {}}),
+                encoding="utf-8",
+            )
+            env = {
+                "TASK_ID": "TASK-999",
+                "MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET": "500",
+                "MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET": "400",
+                "MYCODEAGENT_REVIEWER_TOKEN_BUDGET": "200",
+            }
+            with (
+                patch.dict(os.environ, env, clear=True),
+                patch.object(workflow_tools, "token_usage_path", return_value=usage),
+                patch.object(workflow_tools, "task_raw_trace_path", return_value=raw),
+                patch.object(workflow_tools, "task_trace_path", return_value=trace),
+            ):
+                token_result = json.loads(workflow_tools.record_token_usage("implementer", 1, 250))
+                report_result = json.loads(workflow_tools.record_agent_report("reviewer", 1, "CHANGES_REQUESTED", "F1: fix validation"))
+            self.assertEqual(token_result["total_tokens"], 250)
+            self.assertEqual(report_result["status"], "recorded")
+            self.assertIn("F1: fix validation", raw.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

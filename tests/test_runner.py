@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mycodeagent.runner import (
+    positive_token_budget,
     sleep_preventing_command,
     stream_process_output,
     suspension_gap_seconds,
@@ -28,6 +29,11 @@ REPORT = """# Task workflow: TASK-999
 
 
 class RunnerStreamingTests(unittest.TestCase):
+    def test_token_budget_must_be_positive(self) -> None:
+        self.assertEqual(positive_token_budget("25000"), 25000)
+        with self.assertRaisesRegex(Exception, "greater than zero"):
+            positive_token_budget("0")
+
     def test_workflow_environment_exposes_src_layout_to_omnigent(self) -> None:
         with patch("mycodeagent.runner.ROOT", Path("/repo")):
             environment = workflow_environment({"PYTHONPATH": "/existing"})

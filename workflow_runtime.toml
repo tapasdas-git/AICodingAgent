@@ -24,6 +24,11 @@ test_result_logging_enabled = true
 # return as soon as they finish; this limit only protects against a stuck run.
 time_limit_seconds = 1800
 
+token_budget = 400000
+supervisor_token_budget = 75000
+implementer_token_budget = 100000
+reviewer_token_budget = 60000
+
 # [models.claude_implementer]
 #provider = "anthropic"
 #model_name = "claude-3-5-sonnet-20241022"  # or claude-3-7-sonnet-20250219

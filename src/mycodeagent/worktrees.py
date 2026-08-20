@@ -129,7 +129,8 @@ def _write_work_order(workspace: Path, todo_path: Path, task_id: str) -> tuple[P
 
 
 def run_submission_in_worktree(
-    todo_path: Path, *, task_id: str, mode: str, timeout_seconds: int | None
+    todo_path: Path, *, task_id: str, mode: str, timeout_seconds: int | None,
+    token_budget: int | None,
 ) -> int:
     """Run one selected ready task in a worktree from origin's default branch."""
     task_id = task_id.upper()
@@ -145,6 +146,8 @@ def run_submission_in_worktree(
     command = [sys.executable, "-m", "mycodeagent", "submit", "--todo", str(work_order), "--mode", mode]
     if timeout_seconds is not None:
         command.extend(["--timeout-seconds", str(timeout_seconds)])
+    if token_budget is not None:
+        command.extend(["--token-budget", str(token_budget)])
     environment = os.environ.copy()
     runtime_source = str(ROOT / "src")
     inherited_pythonpath = environment.get("PYTHONPATH")

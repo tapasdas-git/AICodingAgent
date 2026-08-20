@@ -31,6 +31,7 @@ def execute_staged_verification(
     task: TaskSpec,
     todo_path: Path,
     timeout_seconds: int | None,
+    token_budget: int | None,
     implement_first: bool,
     remediate: bool,
 ) -> WorkflowResult:
@@ -54,6 +55,7 @@ def execute_staged_verification(
     return execute_omnigent_stage(
         f"{mode}\n{instruction}\nDo not perform delivery.",
         timeout_seconds=timeout_seconds,
+        token_budget=token_budget,
         task=task,
         todo_path=todo_path,
     )
