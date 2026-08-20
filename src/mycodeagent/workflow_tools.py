@@ -85,15 +85,34 @@ def record_token_usage(agent: str, iteration: int, tokens_used: int) -> str:
     caps = {name: int(os.environ[f"MYCODEAGENT_{name.upper()}_TOKEN_BUDGET"]) for name in TOKEN_AGENTS}
     cap, agent_remaining = caps[agent], max(0, caps[agent] - tokens_used)
     agent_status = "exhausted" if tokens_used >= cap else "active"
-    task_status = "exhausted" if total >= budget else "active"
-    ledger.update(supervisor_tokens=supervisor_total, child_tokens=child_total, total_tokens=total, remaining_tokens=remaining, exhausted=total >= budget)
+    task_exhausted = total >= budget
+    exhausted_agents = []
+    if supervisor_total >= caps["supervisor"]:
+        exhausted_agents.append("supervisor")
+    exhausted_agents.extend(
+        key for key, value in children.items()
+        if int(value) >= caps[key.split(":", 1)[0]]
+    )
+    agent_exhausted = bool(exhausted_agents)
+    exhausted = task_exhausted or agent_exhausted
+    task_status = "exhausted" if task_exhausted else "active"
+    ledger.update(
+        supervisor_tokens=supervisor_total,
+        child_tokens=child_total,
+        total_tokens=total,
+        remaining_tokens=remaining,
+        task_exhausted=task_exhausted,
+        agent_exhausted=agent_exhausted,
+        exhausted_agents=exhausted_agents,
+        exhausted=exhausted,
+    )
     path.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if agent == "supervisor":
         message = f"Token usage snapshot (iteration {iteration}): agent=supervisor cumulative_tokens={tokens_used} delta_since_last_snapshot={delta} iteration_supervisor_tokens={iteration_supervisor} iteration_total={iteration_supervisor + iteration_children}"
     else:
         message = f"Child token usage (iteration {iteration}): agent={agent} invocation_tokens={tokens_used} iteration_child_tokens={iteration_children} iteration_total={iteration_supervisor + iteration_children}"
     write_trace(task_trace_path(task_id), f"{message} agent_budget={cap} agent_remaining={agent_remaining} agent_status={agent_status} task_total={total}/{budget} task_remaining={remaining} task_status={task_status}")
-    return json.dumps({"status": "exhausted" if total >= budget or tokens_used >= cap else "recorded", "iteration_tokens": iteration_supervisor + iteration_children, "total_tokens": total, "remaining_tokens": remaining, "implementer_limit": min(caps["implementer"], remaining), "reviewer_limit": min(caps["reviewer"], remaining)})
+    return json.dumps({"status": "exhausted" if exhausted else "recorded", "iteration_tokens": iteration_supervisor + iteration_children, "total_tokens": total, "remaining_tokens": remaining, "implementer_limit": min(caps["implementer"], remaining), "reviewer_limit": min(caps["reviewer"], remaining)})
 
 ALLOWED_STAGE_EVENTS = {
     "IMPLEMENTATION_STARTED",
