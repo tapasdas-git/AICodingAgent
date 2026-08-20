@@ -200,6 +200,37 @@ class TokenAuditTests(unittest.TestCase):
             self.assertEqual(report_result["status"], "recorded")
             self.assertIn("F1: fix validation", raw.read_text(encoding="utf-8"))
 
+    def test_persists_exhaustion_when_supervisor_exceeds_its_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            usage = root / "TASK-999_usage.json"
+            trace = root / "TASK-999.logs"
+            trace.touch()
+            usage.write_text(
+                json.dumps({"task_id": "TASK-999", "budget": 400000, "supervisor_snapshots": {}, "children": {}}),
+                encoding="utf-8",
+            )
+            env = {
+                "TASK_ID": "TASK-999",
+                "MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET": "75000",
+                "MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET": "100000",
+                "MYCODEAGENT_REVIEWER_TOKEN_BUDGET": "60000",
+            }
+            with (
+                patch.dict(os.environ, env, clear=True),
+                patch.object(workflow_tools, "token_usage_path", return_value=usage),
+                patch.object(workflow_tools, "task_trace_path", return_value=trace),
+            ):
+                result = json.loads(workflow_tools.record_token_usage("supervisor", 2, 75908))
+
+            ledger = json.loads(usage.read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "exhausted")
+            self.assertTrue(ledger["exhausted"])
+            self.assertTrue(ledger["agent_exhausted"])
+            self.assertFalse(ledger["task_exhausted"])
+            self.assertEqual(ledger["exhausted_agents"], ["supervisor"])
+            self.assertEqual(ledger["remaining_tokens"], 324092)
+
 
 if __name__ == "__main__":
     unittest.main()
