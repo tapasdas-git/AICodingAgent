@@ -18,5 +18,5 @@ logs/
 .mycodeagent-worktrees/
 
 # Generated task implementation workspaces
-workspace/
+#workspace/
 workspace-worktrees/
