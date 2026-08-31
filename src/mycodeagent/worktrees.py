@@ -13,7 +13,13 @@ from typing import Iterator
 
 from .paths import ROOT, SETTINGS_PATH, TRACE_DIR
 from .platform_utils import find_project_python, resolve_executable, restrict_file_permissions
-from .tasks import get_task_section, get_task_spec, parse_todo_file, update_task_state
+from .tasks import (
+    TaskReadinessError,
+    get_task_section,
+    get_task_spec,
+    parse_todo_file,
+    update_task_state,
+)
 
 
 RUNTIME_OVERLAY_MODULES = ("tracing.py", "workflow_tools.py")
@@ -153,7 +159,11 @@ def run_submission_in_worktree(
 ) -> int:
     """Run one selected ready task in a worktree from origin's default branch."""
     task_id = task_id.upper()
-    task = get_task_spec(todo_path, task_id)
+    try:
+        task = get_task_spec(todo_path, task_id)
+    except TaskReadinessError:
+        update_task_state(todo_path, task_id, "needs_detail", expected_state="ready")
+        raise
     if task.state != "ready":
         raise ValueError(f"Task {task_id} must be in state 'ready' to create a worktree")
 

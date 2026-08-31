@@ -9,7 +9,13 @@ from pathlib import Path
 from .delivery import run_approved_delivery
 from .orchestration import execute_staged_verification, report_failed, review_verdict
 from .runner import execute_omnigent_stage
-from .tasks import get_first_ready_task, get_task_spec, parse_todo_file, update_task_state
+from .tasks import (
+    TaskReadinessError,
+    get_first_ready_task,
+    get_task_spec,
+    parse_todo_file,
+    update_task_state,
+)
 from .tracing import task_trace_path, write_trace
 
 MODE_PLANS = {
@@ -33,6 +39,16 @@ def submit_ready_queue(
     while True:
         try:
             tasks = parse_todo_file(todo_path)
+        except TaskReadinessError as exc:
+            print(f"Task readiness failed: {exc}", file=sys.stderr)
+            if not update_task_state(todo_path, task_id, "needs_detail", expected_state="ready"):
+                print(f"Could not mark {task_id} as needs_detail; stopping submission.", file=sys.stderr)
+                return 1
+            failures += 1
+            processed += 1
+            if once or stop_on_error:
+                break
+            continue
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1

@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from mycodeagent import worktrees
+from mycodeagent import tasks, worktrees
 
 
 def test_worktree_root_comes_from_runtime_settings() -> None:
@@ -90,3 +90,34 @@ def test_registered_worktree_is_reused_for_task_retry() -> None:
             result = worktrees._create_worktree("ISSUE-23")
 
     assert result == existing
+
+
+def test_incomplete_ready_task_is_marked_needs_detail_before_worktree_creation() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir).resolve()
+        todo = root / "TODO.md"
+        todo.write_text(
+            "## TASK-701 | ready | P2 | Incomplete task in `workspace/incomplete/`\n"
+            "### Outcome\nCreate a utility.\n",
+            encoding="utf-8",
+        )
+        with (
+            patch.object(tasks, "ROOT", root),
+            patch.object(worktrees, "ROOT", root),
+            patch.object(worktrees, "_create_worktree") as create_worktree,
+        ):
+            try:
+                worktrees.run_submission_in_worktree(
+                    todo,
+                    task_id="TASK-701",
+                    mode="2",
+                    timeout_seconds=None,
+                    token_budget=None,
+                )
+            except tasks.TaskReadinessError:
+                pass
+            else:
+                raise AssertionError("incomplete ready task should be rejected")
+
+        assert "## TASK-701 | needs_detail |" in todo.read_text(encoding="utf-8")
+        create_worktree.assert_not_called()

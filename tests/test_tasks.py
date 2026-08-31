@@ -32,7 +32,7 @@ class FlexibleTaskSpecTests(unittest.TestCase):
     def test_uses_task_id_workspace_when_title_has_no_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir).resolve()
-            todo = self._todo(root, "## TASK-108 | ready | P2 | Build a useful utility\n")
+            todo = self._todo(root, "## TASK-108 | draft | P2 | Build a useful utility\n")
             with patch.object(tasks, "ROOT", root):
                 spec = tasks.get_task_spec(todo, "TASK-108")
 
@@ -43,7 +43,7 @@ class FlexibleTaskSpecTests(unittest.TestCase):
             root = Path(temp_dir).resolve()
             todo = self._todo(
                 root,
-                "## TASK-108 | ready | P2 | Build utility in `workspace\\windows_task\\`\n",
+                "## TASK-108 | draft | P2 | Build utility in `workspace\\windows_task\\`\n",
             )
             with patch.object(tasks, "ROOT", root):
                 spec = tasks.get_task_spec(todo, "TASK-108")
@@ -55,7 +55,7 @@ class FlexibleTaskSpecTests(unittest.TestCase):
             root = Path(temp_dir).resolve()
             todo = self._todo(
                 root,
-                "## TASK-109 | ready | P1 | Build utility in `workspace/right/`\n"
+                "## TASK-109 | draft | P1 | Build utility in `workspace/right/`\n"
                 "- Tests: `workspace/wrong/test/`\n",
             )
             with patch.object(tasks, "ROOT", root):
@@ -75,6 +75,57 @@ class FlexibleTaskSpecTests(unittest.TestCase):
             )
             self.assertIn("## TASK-110 | working |", todo.read_text(encoding="utf-8"))
             self.assertTrue((root / ".mycodeagent-task-state.lock").is_file())
+
+    def test_ready_task_requires_the_strict_template(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            todo = self._todo(
+                root,
+                "## TASK-111 | ready | P1 | Incomplete task in `workspace/incomplete/`\n"
+                "### Outcome\nBuild something.\n",
+            )
+            with patch.object(tasks, "ROOT", root):
+                with self.assertRaisesRegex(tasks.TaskReadinessError, "missing or empty sections"):
+                    tasks.get_task_spec(todo, "TASK-111")
+
+    def test_complete_strict_task_is_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            body = """## TASK-112 | ready | P1 | Build slug utility in `workspace/slug/`
+### Outcome
+Create deterministic slugs.
+### Context
+The application needs stable URL identifiers.
+### Workspace
+- Source: `workspace/slug/Coding/`
+- Tests: `workspace/slug/test/`
+- Requirements: `workspace/slug/Coding/requirements.txt`
+### Technology Stack
+- Runtime: Python 3.11
+### Public API
+`slugify(value: str) -> str`
+### Functional Requirements
+- Normalize words and join them with hyphens.
+### Input Validation
+- Reject non-string values.
+### Error Behavior
+- Raise TypeError for non-string values without changing state.
+### Performance and Operational Requirements
+- Process input in linear time and bounded auxiliary memory.
+### Security Requirements
+- No external input is executed and no secrets are required.
+### Edge Cases
+- Empty strings, Unicode text, and repeated separators.
+### Acceptance Criteria
+- Public import and all listed behaviors are covered by tests.
+### Out of Scope
+- Transliteration and persistent storage.
+"""
+            todo = self._todo(root, body)
+            with patch.object(tasks, "ROOT", root):
+                spec = tasks.get_task_spec(todo, "TASK-112")
+
+            self.assertEqual(spec.workspace, root / "workspace" / "slug")
 
 
 if __name__ == "__main__":

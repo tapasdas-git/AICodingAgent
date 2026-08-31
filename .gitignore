@@ -20,3 +20,4 @@ logs/
 # Generated task implementation workspaces
 #workspace/
 workspace-worktrees/
+.DS_Store

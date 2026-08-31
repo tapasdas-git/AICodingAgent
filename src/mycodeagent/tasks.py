@@ -18,6 +18,29 @@ TASK_HEADING = re.compile(
     re.MULTILINE,
 )
 TITLE_WORKSPACE = re.compile(r"`?(workspace[\\/][A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)*[\\/]?)`?")
+REQUIRED_TASK_SECTIONS = (
+    "Outcome",
+    "Context",
+    "Workspace",
+    "Technology Stack",
+    "Public API",
+    "Functional Requirements",
+    "Input Validation",
+    "Error Behavior",
+    "Performance and Operational Requirements",
+    "Security Requirements",
+    "Edge Cases",
+    "Acceptance Criteria",
+    "Out of Scope",
+)
+PLACEHOLDER_TEXT = re.compile(
+    r"(?:<[^>]+>|\b(?:tbd|todo|to be decided|fill this|placeholder)\b)",
+    re.IGNORECASE,
+)
+
+
+class TaskReadinessError(ValueError):
+    """A ready task does not satisfy the strict implementation template."""
 
 
 @dataclass(frozen=True)
@@ -29,6 +52,53 @@ class TaskSpec:
     priority: str
     title: str
     workspace: Path
+
+
+def _task_body_sections(section: str) -> dict[str, str]:
+    """Return third-level task sections keyed case-insensitively by heading."""
+    heading = re.compile(r"^#{3,6}\s+(.+?)\s*$", re.MULTILINE)
+    matches = list(heading.finditer(section))
+    result: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(section)
+        result[match.group(1).strip().casefold()] = section[match.end() : end].strip()
+    return result
+
+
+def validate_task_readiness(todo_path: Path, task_id: str) -> None:
+    """Reject a ready task that does not follow ``TASK_TEMPLATE.md``."""
+    content = todo_path.read_text(encoding="utf-8")
+    matches = list(TASK_HEADING.finditer(content))
+    for index, match in enumerate(matches):
+        if match.group(1) != task_id:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        section = content[match.end() : end]
+        sections = _task_body_sections(section)
+        missing = [name for name in REQUIRED_TASK_SECTIONS if not sections.get(name.casefold())]
+        placeholders = [
+            name for name in REQUIRED_TASK_SECTIONS
+            if sections.get(name.casefold()) and PLACEHOLDER_TEXT.search(sections[name.casefold()])
+        ]
+        workspace = sections.get("workspace", "")
+        missing_paths = [
+            label for label in ("Source", "Tests", "Requirements")
+            if re.search(rf"^\s*-\s*{label}:\s*`?[^`\n]+`?\s*$", workspace, re.MULTILINE) is None
+        ]
+        problems = []
+        if missing:
+            problems.append("missing or empty sections: " + ", ".join(missing))
+        if placeholders:
+            problems.append("unresolved placeholders in: " + ", ".join(placeholders))
+        if missing_paths:
+            problems.append("Workspace is missing paths: " + ", ".join(missing_paths))
+        if problems:
+            raise TaskReadinessError(
+                f"Task {task_id} is not implementation-ready; " + "; ".join(problems)
+                + ". Complete TASK_TEMPLATE.md and mark the task ready again."
+            )
+        return
+    raise ValueError(f"Task ID '{task_id}' not found in {todo_path.name}")
 
 
 def parse_todo_file(todo_path: Path) -> dict[str, dict[str, str]]:
@@ -80,6 +150,8 @@ def get_task_spec(todo_path: Path, task_id: str) -> TaskSpec:
 
         section_end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
         section = content[match.end() : section_end]
+        if state.lower() == "ready":
+            validate_task_readiness(todo_path, task_id)
         workspace = _resolve_workspace(task_id, title, section)
 
         declared_paths = {

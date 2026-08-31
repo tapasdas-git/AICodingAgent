@@ -154,6 +154,13 @@ pip install -e .
 
 ### Execute the automated workflow
 
+Before marking a task `ready`, copy and complete the strict
+[task specification template](TASK_TEMPLATE.md). MyCodeAgent rejects missing,
+empty, or placeholder sections before launching an agent and changes a rejected
+TODO task to `needs_detail`. For GitHub Project ingestion, use the same template
+in the issue body; `OPEN` plus project status `Todo` selects a candidate, while
+the strict readiness gate determines whether implementation may begin.
+
 `submit` processes the first `ready` task in `TODO.md` and exits. Select the level of automation with `--mode`:
 
 | Mode | Command | What it runs | Final task state on clean workflow exit |
