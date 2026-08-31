@@ -247,7 +247,7 @@ Acceptance:
   - Test suite passes with 100% pass rate locally.
 - Approved by: Tech Lead
 - Approval reference: 2026-08-02 Arch Sync
-## TASK-106 | reviewed | P2 | [FEATURE] Build String Utility Module in `workspace/string_utils/`
+## TASK-106 | delivered | P2 | [FEATURE] Build String Utility Module in `workspace/string_utils/`
 - Outcome: Implement a pure Python string utility module with Pydantic validation for string statistics and methods for text manipulation (reversal, word count, title formatting).
 - Depends on: None
 - Repository: https://github.com/tapasdas-git/MyOmnigent.git
@@ -405,6 +405,7 @@ Acceptance:
 Outcome: Implement a pure Python configuration management module that loads, validates, and parses YAML/JSON configuration files into strongly-typed Pydantic schemas with environment variable overrides.
 ## TASK-009 | delivered | P3 | [FEATURE] Add String Utility Helpers in `workspace/string_utils/`
 - Outcome: Implement a lightweight string manipulation module providing basic text normalization and case conversion functions.
+<<<<<<< Updated upstream
 ## TASK-503| delivered | P2 | [FEATURE] Build Modular Calculator Engine in workspace/calculator/
 Outcome: Implement a lightweight arithmetic calculator module supporting basic math operations, history tracking, and input validation.
 Depends on: None.
@@ -416,3 +417,68 @@ Framework: Python 3.11+, Pydantic (v2)
 Pattern: Strategy Pattern for Math Operations
 CalculatorEngine: Main entry point for performing calculations and storing calculation history.
 OperationStrategy: Execution logic for standard arithmetic (add, subtract, multiply, divide, power).
+=======
+## TASK-600 | reviewed | P1 | [FEATURE] Implement Groq-Powered Hatespeech Classifier Agent in `workspace/hatespeechDemoH2/`
+- Outcome: Implement an agentic classification program that processes Twitter comments, performs multi-step reasoning via Groq LLM, and produces structured risk assessments.
+- Depends on: None
+- Repository: https://github.com/tapasdas-git/AICodingAgent.git
+- Harness: primary-name
+- Night-ready: yes
+- Architecture & Tech Stack:
+  - Framework: Python 3.11+, Pydantic (v2), LiteLLM / Groq SDK
+  - Pattern: ReAct / Reason-Before-Decision Agentic Pattern
+    1. InputSanitizer: Pre-processes raw Twitter text, strips dangerous payloads, and normalizes handles/URLs.
+    2. ReasoningEngine: Executes chain-of-thought prompting against Groq (`llama-3.3-70b-versatile`) to evaluate targeted harassment, slurs, or incitement.
+    3. HatespeechAgent: High-level supervisor API coordinating evaluation, confidence scoring, and fallback handling.
+- API Key & Secrets Management:
+  - Environment Variable: Expects `GROQ_API_KEY` loaded dynamically via `os.getenv()`.
+  - Security Requirement: Do not hardcode API keys or credentials in any source or test file.
+  - Mocking in Tests: Unit tests must mock LiteLLM/Groq API calls using `unittest.mock` or pytest fixtures so the test suite runs completely offline.
+- Workspace Boundary:
+  - Source: `workspace/hatespeechDemoH2/Coding/`
+  - Tests: `workspace/hatespeechDemoH2/test/`
+  - Requirements: `workspace/hatespeechDemoH2/Coding/requirements.txt`
+  - Rule: All generated files must stay strictly inside `workspace/hatespeech_agent/`. Do not edit files outside this directory.
+- Acceptance:
+  - Isolated workspace directory created at `workspace/hatespeechDemoH2/`.
+  - Source files created under `workspace/hatespeechDemoH2/Coding/`:
+    - `requirements.txt`: Local dependencies (`pydantic>=2.0.0`, `litellm>=1.0.0`, `pytest`).
+    - `schemas.py`: Pydantic models for `TwitterCommentInput`, `ReasoningStep`, and `ClassificationOutput` (`is_hate_speech: bool`, `confidence: float`, `reasoning: str`, `category: str`).
+    - `sanitizer.py`: Utility functions to sanitize input strings.
+    - `agent.py`: Core `HatespeechAgent` implementation interacting with Groq via LiteLLM.
+  - Test files created under `workspace/hatespeechDemoH2/test/`:
+    - `test_agent.py`: Verifies benign vs. toxic classification pathways, Pydantic schema validation, error handling on API failure, and input sanitization.
+  - Test suite passes with 100% pass rate locally.
+- Approved by: Tech Lead
+- Approval reference: 2026-08-29 Arch Sync
+## TASK-601 | failed | P2 | [FEATURE] Build Modular Calculator Engine in `workspace/calculatorDemoO1/`
+- Outcome: Implement a lightweight arithmetic calculator module supporting basic math operations, history tracking, and input validation.
+- Depends on: None
+- Repository: https://github.com/tapasdas-git/AICodingAgent.git
+- Harness: primary-name
+- Night-ready: yes
+- Architecture & Tech Stack:
+  - Framework: Python 3.11+, Pydantic (v2)
+  - Pattern: Strategy Pattern for Math Operations
+    1. CalculatorEngine: Main entry point for performing calculations and storing calculation history.
+    2. OperationStrategy: Execution logic for standard arithmetic (add, subtract, multiply, divide, power).
+- API Key & Secrets Management:
+  - Environment Variable: None required.
+  - Security Requirement: Do not hardcode secret tokens or credentials in any source or test file.
+- Workspace Boundary:
+  - Source: `workspace/calculatorDemoO1/Coding/`
+  - Tests: `workspace/calculatorDemoO1/test/`
+  - Requirements: `workspace/calculatorDemoO1/Coding/requirements.txt`
+  - Rule: All generated files must stay strictly inside `workspace/calculatorDemoO1/`. Do not edit files outside this directory.
+- Acceptance:
+  - Isolated workspace directory created at `workspace/calculatorDemoO1/`.
+  - Source files created under `workspace/calculatorDemoO1/Coding/`:
+    - `requirements.txt`: Local dependencies (`pydantic>=2.0.0`, `pytest`).
+    - `schemas.py`: Pydantic models for `CalculationRequest`, `CalculationResult`, and `OperationType`.
+    - `engine.py`: Core `CalculatorEngine` implementation handling operations and calculation history log.
+  - Test files created under `workspace/calculatorDemoO1/test/`:
+    - `test_calculator.py`: Verifies addition, subtraction, multiplication, division by zero handling, power functions, and history retrieval.
+  - Test suite passes with 100% pass rate locally.
+- Approved by: Tech Lead
+- Approval reference: 2026-08-30 Arch Sync
+

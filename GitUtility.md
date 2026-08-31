@@ -7,6 +7,7 @@ git checkout -b feature/F29 origin/main
 git add .
 
 # 4. Commit and save the changes locally on your feature branch
+
 git commit -m "Your descriptive commit message here"
 # 5. Push changes to your remote feature branch (for backup/review)
 git push -u origin feature/F29
