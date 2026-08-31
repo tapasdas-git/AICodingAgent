@@ -9,6 +9,7 @@ src/mycodeagent/__init__.py
 src/mycodeagent/__main__.py
 src/mycodeagent/delivery.py
 src/mycodeagent/file_lock.py
+src/mycodeagent/github_tasks.py
 src/mycodeagent/orchestration.py
 src/mycodeagent/paths.py
 src/mycodeagent/platform_utils.py
@@ -19,6 +20,7 @@ src/mycodeagent/tasks.py
 src/mycodeagent/tracing.py
 src/mycodeagent/workflow_tools.py
 src/mycodeagent/worktrees.py
+tests/test_github_tasks.py
 tests/test_platform_utils.py
 tests/test_runner.py
 tests/test_tasks.py

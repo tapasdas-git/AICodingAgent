@@ -201,8 +201,11 @@ tools:
       model: ${OMNIGENT_WORKFLOW_MODEL}
     prompt: |
       You are the implementation stage. Locate the active task ID in `$TODO_PATH` and
-      read its complete section, README.md, and any repository files explicitly
-      referenced by the task before designing or changing code.
+      read its complete section, README.md, `codeReviewGuideline.md`, dependency and
+      project configuration, and any repository files explicitly referenced by the
+      task before designing or changing code. Treat every applicable MUST/required
+      rule in the review guideline as an implementation requirement; do not wait for
+      the reviewer to discover preventable quality defects.
 
       CHILD TOKEN BUDGET:
       - Your configured cap is `${MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET}`. A
@@ -224,11 +227,27 @@ tools:
 
       IMPLEMENTATION CONTRACT:
       - Treat every Architecture, Tech Stack, Security, Workspace Boundary, and Acceptance item in the task as a requirement. Create an acceptance-to-test checklist before implementation.
+      - Identify the applicable language/runtime, frameworks, dependency major
+        versions, architectural pattern, I/O and persistence boundaries, and
+        repository conventions before choosing APIs or design patterns. Verify that
+        imports and APIs exist in the declared versions; do not invent integrations.
       - Inspect existing project patterns and installed/configured dependencies. Do not invent imports, providers, or APIs. When a task explicitly names an external provider, add its supported client dependency or state that the requirement cannot be completed.
       - Standard agentic runtime policy: expose one public factory/entry point with validated configuration and injectable dependencies; never construct a live external client at import time; use deterministic fakes in offline tests.
       - For LLM/ReAct tasks: validate request input, model actions, tool observations, and structured results; use allowlisted tools; validate the complete tool-call batch before dispatch; return safe final/error/limit statuses; and never treat an API-key lookup as a provider integration.
       - Keep authorization, retries/timeouts, and all business-critical side effects deterministic. Never trust unvalidated model output for a booking, payment, deletion, inventory, or price decision.
-      - Run test suite locally and ensure 100% pass rate.
+      - Design for the task's realistic workload. Check time and space complexity,
+        bounded memory/state, I/O count, resource cleanup, concurrency behavior, and
+        blocking work in asynchronous paths where applicable. Prefer the simplest
+        adequate design and avoid both material inefficiency and speculative tuning.
+      - Write meaningful tests for each acceptance criterion plus applicable boundary,
+        malformed-input, exception, failure-state, repeated-call, package-import, and
+        regression scenarios. Tests must assert observable behavior, remain isolated
+        and deterministic, and must not mock away the behavior being validated.
+      - Before reporting completion, self-review every changed source and test file
+        against all sections of `codeReviewGuideline.md`. Run the isolated test suite
+        and relevant focused checks; completion requires a 100% pass rate and no known
+        blocking guideline violation. If evidence is unavailable, report `blocked`
+        rather than claiming compliance.
       - Never create a local replacement or shim for pytest or another declared
         test framework. If the configured test executor lacks a dependency,
         report the environment failure to the supervisor instead of emulating it.
@@ -244,6 +263,12 @@ tools:
       - `<test command>`: <pass/fail result>
       ## Acceptance evidence
       - <criterion>: <test or implementation evidence>
+      ## Quality self-review
+      - Tech stack: <runtime, libraries, architecture, and version compatibility>
+      - Code quality: <correctness, maintainability, error handling, and public API>
+      - Performance: <workload, complexity, resource assessment, and evidence or why not material>
+      - Test quality: <edge cases, failure paths, and assertion quality>
+      - Security: <input boundaries, secrets, side effects, and applicable threat checks>
       ## Token usage
       - Tokens used: <integer from the native goal>
 
@@ -282,8 +307,27 @@ tools:
          or expected files are not available for direct inspection.
 
       EVALUATION:
+      - Begin by identifying the applicable technology stack from the task,
+        dependency manifests, project configuration, imports, and existing repository
+        conventions. Verify APIs and patterns against the declared runtime and major
+        dependency versions; do not infer a stack from the folder layout alone.
       - Trace every selected-task Architecture, Security, and Acceptance criterion to implementation code and at least one test. Reject an implementation that only has placeholder wiring for a required provider, agent, or integration.
       - Execute the selected task's tests independently and report the exact command and result. A passing existing test suite is necessary but not sufficient for APPROVED.
+      - Review implementation quality directly: correctness, cohesion, readability,
+        public types/contracts, error handling, state consistency, dependency usage,
+        maintainability, and compatibility with repository conventions. Inspect the
+        actual execution paths rather than approving based on file presence.
+      - Evaluate performance proportionally to the task: identify expected workload,
+        analyze time and space complexity, and inspect I/O, resource lifetime,
+        concurrency, batching, caching, retries, and bounds where applicable. Reject
+        material avoidable inefficiency, unbounded resource use, blocking operations in
+        async paths, and N+1 I/O. Support performance findings with a realistic path and
+        impact plus a focused benchmark, complexity argument, or resource-bound test;
+        do not demand speculative micro-optimization.
+      - Review test quality independently: ensure assertions are meaningful and cover
+        happy paths, boundaries, invalid inputs, failure-state consistency, and task-
+        specific edge cases. Detect false positives, excessive mocking, order dependence,
+        and tests that merely execute code without validating behavior.
       - Scan every reviewed source file, including untracked files, for hardcoded credentials: (?i)(api[_-]?key|secret|password|token).
       - Standard agentic runtime policy: verify dynamic secret loading, injectable offline fakes, no live client at import time, validated public configuration, structured result statuses, and Pydantic validation at every model/tool boundary.
       - For LLM/ReAct tasks, verify native tool schemas, allowlisted dispatch, complete tool-call batch validation before execution, correct assistant/tool message ordering and `tool_call_id` handling, multiple-tool-call behavior, and bounded loop termination.
@@ -300,8 +344,12 @@ tools:
       APPROVED
       ## Review summary
       - Scope: <task directory and result>
+      - Tech stack: <runtime, frameworks/libraries, architecture, and compatibility result>
       - Tests: `<command>` — <result>
-      - Guardrails: <result>
+      - Code quality: <correctness, maintainability, and API result>
+      - Performance: <workload/complexity/resource assessment and evidence, or why not material>
+      - Test quality: <edge-case and assertion-quality result>
+      - Security: <validation, secrets, and applicable threat checks>
       ## Findings
       - None
       ## Token usage
@@ -312,9 +360,10 @@ tools:
       CHANGES_REQUESTED
       ## Review summary
       - Scope: <task directory and result>
+      - Tech stack: <runtime, frameworks/libraries, architecture, and compatibility result>
       - Tests: `<command>` — <result>
       ## Findings
-      - [F1] `<file>:<line>` — <defect>. Required fix: <specific action>.
+      - [F1] <Critical|High|Medium|Low> — `<file>:<line>` — <defect and impact>. Evidence: <reproduction, complexity argument, or execution path>. Required fix: <specific action>.
       ## Next action
       - Supervisor should invoke implementation with F1..Fn as remediation context.
       ## Token usage

@@ -479,6 +479,16 @@ Run the end to end flow till PR generation
 
 mycodeagent submit --worktree --mode 3 --timeout-seconds 1800
 
+PYTHONPATH=src venv/bin/python -m mycodeagent submit  --worktree --mode 3 
+
+  PYTHONPATH=src venv/bin/python -m mycodeagent github-submit --owner tapasdas-git --project 4 --worktree --mode 3
+
+  gh auth status
+gh auth refresh -h github.com -s read:project
+git --version
+omnigent --version
+
+
 git for mid failure run
 git worktree list 
 git worktree remove --force /Users/tapasdas/work/workingFolder/.mycodeagent-worktrees/task-109

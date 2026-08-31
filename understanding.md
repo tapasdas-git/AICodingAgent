@@ -696,3 +696,34 @@ venv\Scripts\activate.bat
 
 pip install -e .
 
+
+## GIT Feature branch merge
+
+## To check current branch you are
+
+git branch --show-current
+## To work on a feature branch
+git checkout -b feature/your-branch-name
+
+## To merge Feature branch to Main
+
+git add .
+
+git commit -m "Complete feature implementation"
+
+git push -u origin feature/your-branch-name
+
+# 1. Switch back to your local main branch
+git switch main
+
+# 2. Pull the absolute latest updates from remote main (keeps you up to date)
+git pull origin main
+
+# 3. Merge your local feature branch into your local main branch
+git merge feature/your-branch-name
+
+# 4. Push the newly merged main branch back up to the remote server
+git push origin main
+
+
+
