@@ -152,6 +152,20 @@ pip install -e .
 
 📖 Usage Guide
 
+### Shared implementation and review quality gates
+
+The implementer and reviewer both use `codeReviewGuideline.md` as the single
+quality standard. The implementer must document public APIs and explain
+non-obvious design, security, protocol-ordering, and performance decisions. The
+reviewer inspects both application code and implementer-written tests and must
+map its conclusions to direct repository or executed-test evidence.
+
+`execute_task_tests` also runs deterministic checks configured under `[quality]`
+in `workflow_runtime.toml`. Missing public docstrings, unresolved placeholder
+comments, and tests without meaningful assertions fail the verification gate
+even when pytest itself passes. Reviewer findings are accepted only when they
+use a known guideline ID and cite an existing task file and valid line number.
+
 ### Execute the automated workflow
 
 Before marking a task `ready`, copy and complete the strict

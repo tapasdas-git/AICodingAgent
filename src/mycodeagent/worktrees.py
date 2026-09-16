@@ -22,7 +22,12 @@ from .tasks import (
 )
 
 
-RUNTIME_OVERLAY_MODULES = ("tracing.py", "workflow_tools.py")
+RUNTIME_OVERLAY_MODULES = (
+    "protocol.py",
+    "quality_checks.py",
+    "tracing.py",
+    "workflow_tools.py",
+)
 
 
 @contextmanager
@@ -30,18 +35,26 @@ def _runtime_module_overlay(workspace: Path) -> Iterator[None]:
     """Expose current deterministic tools in an origin-based worktree temporarily."""
     source_package = ROOT / "src" / "mycodeagent"
     target_package = workspace / "src" / "mycodeagent"
-    originals: dict[Path, tuple[bytes, int]] = {}
+    originals: dict[Path, tuple[bytes | None, int | None]] = {}
     for module_name in RUNTIME_OVERLAY_MODULES:
         source = source_package / module_name
         target = target_package / module_name
-        originals[target] = (target.read_bytes(), target.stat().st_mode)
+        originals[target] = (
+            (target.read_bytes(), target.stat().st_mode)
+            if target.is_file()
+            else (None, None)
+        )
         shutil.copy2(source, target)
     try:
         yield
     finally:
         for target, (content, mode) in originals.items():
-            target.write_bytes(content)
-            target.chmod(mode)
+            if content is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(content)
+                if mode is not None:
+                    target.chmod(mode)
 
 
 def _git(*arguments: str) -> str:

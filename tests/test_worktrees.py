@@ -73,6 +73,33 @@ def test_runtime_module_overlay_uses_current_tools_and_restores_worktree() -> No
             ) == f"stale {module_name}\n"
 
 
+def test_runtime_module_overlay_removes_new_modules_after_run() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir).resolve()
+        workspace = root / "worktree"
+        source_package = root / "src" / "mycodeagent"
+        target_package = workspace / "src" / "mycodeagent"
+        source_package.mkdir(parents=True)
+        target_package.mkdir(parents=True)
+        for module_name in worktrees.RUNTIME_OVERLAY_MODULES:
+            (source_package / module_name).write_text("current\n", encoding="utf-8")
+        existing_module = worktrees.RUNTIME_OVERLAY_MODULES[0]
+        (target_package / existing_module).write_text("stale\n", encoding="utf-8")
+
+        with patch.object(worktrees, "ROOT", root):
+            with worktrees._runtime_module_overlay(workspace):
+                assert all(
+                    (target_package / module_name).is_file()
+                    for module_name in worktrees.RUNTIME_OVERLAY_MODULES
+                )
+
+        assert (target_package / existing_module).read_text(encoding="utf-8") == "stale\n"
+        assert all(
+            not (target_package / module_name).exists()
+            for module_name in worktrees.RUNTIME_OVERLAY_MODULES[1:]
+        )
+
+
 def test_registered_worktree_is_reused_for_task_retry() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir).resolve()
