@@ -34,36 +34,22 @@ def test_token_budget_and_report_audit_are_configured() -> None:
     assert "callable: mycodeagent.workflow_tools.record_agent_report" in workflow
 
 
-def test_reviewer_is_technology_aware_and_reviews_quality_beyond_layout() -> None:
+def test_implementer_and_reviewer_share_quality_and_evidence_rules() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-
-    assert "identifying the applicable technology stack" in workflow
-    assert "Review implementation quality directly" in workflow
-    assert "Evaluate performance proportionally to the task" in workflow
-    assert "Review test quality independently" in workflow
-    assert "- Tech stack:" in workflow
-    assert "- Code quality:" in workflow
-    assert "- Performance:" in workflow
-    assert "- Test quality:" in workflow
-
-
-def test_code_review_guide_requires_evidence_based_performance_and_edge_cases() -> None:
     guideline = (ROOT / "codeReviewGuideline.md").read_text(encoding="utf-8")
+    with RUNTIME.open("rb") as runtime_file:
+        runtime = tomllib.load(runtime_file)
 
-    assert "Understand the task and technology stack" in guideline
-    assert "algorithmic time and space complexity" in guideline
-    assert "focused benchmark, complexity argument, or resource-bound" in guideline
-    assert "boundaries, invalid inputs, exceptions, state after" in guideline
-    assert "folder placement and a passing happy-path" in guideline.lower()
-
-
-def test_implementer_uses_the_same_quality_guide_before_completion() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-
-    assert "README.md, `codeReviewGuideline.md`, dependency and" in workflow
-    assert "review guideline as an implementation requirement" in workflow
-    assert "Identify the applicable language/runtime" in workflow
-    assert "Design for the task's realistic workload" in workflow
-    assert "Write meaningful tests for each acceptance criterion" in workflow
-    assert "self-review every changed source and test file" in workflow
+    assert workflow.count("`codeReviewGuideline.md`") >= 2
+    assert "Inspect every implementer-written test" in workflow
+    assert "Never invent a finding" in workflow
     assert "## Quality self-review" in workflow
+    assert "DOC-01" in guideline
+    assert "TEST-04" in guideline
+    assert "REVIEW-03" in guideline
+    assert runtime["quality"] == {
+        "enabled": True,
+        "require_public_docstrings": True,
+        "reject_placeholder_comments": True,
+        "require_test_assertions": True,
+    }

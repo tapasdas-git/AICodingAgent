@@ -1,103 +1,59 @@
-# Code Review Guidelines and Guardrails
+# Shared Implementation and Code Review Guidelines
 
-Approve only when the implementation, its tests, and the review evidence satisfy
-every applicable requirement below. Folder placement and a passing happy-path
-test suite are necessary, but never sufficient. Return `CHANGES_REQUESTED` with
-specific file-and-line findings whenever a material requirement is unmet.
+This is the single quality standard for both the implementer and reviewer.
+Folder placement and passing happy-path tests are necessary, but never sufficient.
+Apply only rules relevant to the task's declared technology stack and workload.
 
-## 1. Understand the task and technology stack
+## Documentation
 
-- Read the complete task, its architecture and acceptance criteria, dependency
-  declarations, project configuration, and relevant existing code before judging
-  the implementation.
-- Identify and report the language/runtime version, frameworks, libraries,
-  persistence or network components, concurrency model, and architectural pattern
-  that are actually applicable. Never apply framework-specific rules by guesswork.
-- Check usage against the installed/declared major version. Reject deprecated,
-  incompatible, invented, or incorrectly used APIs.
-- Confirm the design follows the task's requested architecture and the repository's
-  established conventions without unnecessary abstractions or dependencies.
+- **DOC-01 — Public modules:** Every public Python module must have a useful module docstring.
+- **DOC-02 — Public API:** Every public class, function, and method must have a useful docstring explaining its contract or purpose. A class docstring covers its constructor unless construction has non-obvious behavior.
+- **DOC-03 — Non-obvious decisions:** Complex private algorithms, security invariants, performance tradeoffs, protocol ordering, and state-changing behavior require concise comments explaining why the design is necessary.
+- **DOC-04 — Comment quality:** Comments must explain intent, constraints, or tradeoffs rather than restating syntax. They must remain accurate after code changes.
+- **DOC-05 — No placeholders:** Submitted code must not contain unresolved `TODO`, `FIXME`, `XXX`, or placeholder comments.
 
-## 2. Correctness and behavior
+Simple private helpers, obvious accessors, and clearly named tests do not require docstrings. Do not add comments merely to increase comment volume.
 
-- Trace every acceptance criterion to a concrete implementation path and at least
-  one meaningful test or focused reviewer reproduction.
-- Inspect normal, boundary, empty, malformed, failure, and recovery paths. Include
-  state consistency after exceptions and repeated calls where state is retained.
-- Validate public inputs and external data at the boundary. Errors must be explicit,
-  useful, and consistent; failures must not silently corrupt or partially update state.
-- Check package-style imports and the public API from the repository root, not only
-  imports that happen to work from the source directory.
-- Look for off-by-one errors, invalid assumptions, mutation leaks, resource leaks,
-  race conditions, ordering problems, and incorrect exception handling when relevant.
+## Correctness and architecture
 
-## 3. Code quality and maintainability
+- **COR-01 — Requirement coverage:** Trace every acceptance criterion to an implementation path and meaningful test.
+- **COR-02 — Boundaries:** Validate public inputs and untrusted external data at system boundaries.
+- **COR-03 — Failure safety:** Exceptions must be explicit and must not leave partial or corrupted state.
+- **COR-04 — Compatibility:** Imports, APIs, and patterns must match the declared runtime and dependency major versions.
+- **COR-05 — Maintainability:** Code must be cohesive, readable, typed at public boundaries, and free of needless duplication, dead code, hidden global state, or broad exception swallowing.
 
-- Code must be readable, cohesive, typed at public boundaries, and consistent with
-  the repository style. Names should express intent and comments should explain why,
-  not restate the code.
-- Functions and classes should have focused responsibilities. Reject duplicated
-  logic, needless complexity, dead code, broad exception swallowing, hidden global
-  state, and premature abstraction that makes the task harder to maintain.
-- Dependencies must be justified, declared, version-compatible, and used through
-  supported APIs. Avoid a dependency when the standard library is sufficient.
-- Public behavior and important constraints must be discoverable through types,
-  validation, docstrings, or tests as appropriate to the project.
+## Performance and resource use
 
-## 4. Performance and resource use
+- **PERF-01 — Proportional review:** Establish the realistic workload before evaluating performance; do not demand speculative micro-optimization.
+- **PERF-02 — Complexity:** Reject material avoidable quadratic work, repeated full scans, N+1 I/O, unbounded accumulation, and unnecessary serialization.
+- **PERF-03 — Resources:** Expensive resources must be bounded, timed out, reused or released appropriately. Blocking I/O must not run directly in asynchronous execution paths.
+- **PERF-04 — Evidence:** A blocking performance finding requires a realistic execution path and impact plus a benchmark, complexity argument, or resource-bound reproduction.
 
-- Determine the expected input size, frequency, latency, memory, I/O, and concurrency
-  characteristics from the task and code. State when performance is not material.
-- Review algorithmic time and space complexity. Reject avoidable quadratic work,
-  unbounded accumulation, repeated full scans, N+1 I/O, unnecessary serialization,
-  blocking I/O in asynchronous paths, or loading unbounded data into memory.
-- Verify expensive resources are created, reused, bounded, timed out, and released
-  correctly. Check batching, caching, pagination, retry/backoff, and concurrency only
-  where the workload requires them; do not demand speculative optimization.
-- A performance finding must describe the execution path, realistic workload,
-  expected impact, and a concrete fix. For a performance-sensitive requirement,
-  obtain evidence with a focused benchmark, complexity argument, or resource-bound
-  test; intuition alone is not enough for approval or rejection.
+## Security and operational safety
 
-## 5. Security and operational safety
+- **SEC-01 — Secrets:** Never commit credentials, tokens, passwords, private keys, or sensitive values.
+- **SEC-02 — Untrusted data:** Validate user, file, network, database, tool, and model output before authorization or state changes.
+- **SEC-03 — Side effects:** Authorization and complete input validation must occur before business-critical side effects.
+- **SEC-04 — External calls:** External calls require task-appropriate timeouts and deterministic error behavior.
 
-- No secrets, credentials, private keys, or sensitive values may be committed.
-- Treat user, file, network, database, tool, and model output as untrusted. Validate
-  before authorization or any state-changing operation.
-- Check injection, path traversal, unsafe deserialization, excessive permissions,
-  sensitive logging, denial-of-service bounds, and dependency risk where applicable.
-- External calls must have appropriate timeouts and deterministic failure behavior.
-  Business-critical side effects must be authorized and validated before execution.
+## Test quality
 
-## 6. Test quality
+- **TEST-01 — Meaningful assertions:** Tests must assert observable behavior and be capable of failing when that behavior breaks.
+- **TEST-02 — Coverage matrix:** Cover every acceptance criterion plus applicable boundaries, malformed inputs, exceptions, failure-state consistency, and regressions.
+- **TEST-03 — Isolation:** Tests must be deterministic, order-independent, offline where required, and must not mock away the behavior under review.
+- **TEST-04 — Test review:** The reviewer must inspect test source, fixtures, mocks, and assertions—not merely run pytest.
+- **TEST-05 — Missing cases:** A significant missing scenario requires a durable regression test. A manual reproduction alone is not sufficient for approval.
 
-- Run the exact task suite independently. Passing tests do not prove completeness.
-- Tests must assert behavior rather than implementation details and must be isolated,
-  deterministic, readable, and capable of failing when the behavior is broken.
-- Require coverage of happy paths, boundaries, invalid inputs, exceptions, state after
-  failure, and regression cases for corrected defects. Add concurrency, performance,
-  security, integration, or platform cases when the task makes them relevant.
-- Inspect fixtures, mocks, and assertions for false positives. Reject tests that only
-  call code without meaningful assertions, mock away the behavior under review, depend
-  on execution order, or require uncontrolled live services.
-- When an important scenario is missing, run a focused non-mutating reproduction and
-  request a durable regression test rather than approving based on manual evidence alone.
+## Scope and repository hygiene
 
-## 7. Scope and repository hygiene
+- **SCOPE-01 — Isolation:** Task code belongs in `<task_directory>/Coding/` and tests in `<task_directory>/test/` unless the task explicitly requires another structure.
+- **SCOPE-02 — Focus:** Reject unrelated refactoring, caches, logs, generated artifacts, or changes outside the selected task's authority.
+- **SCOPE-03 — Complete inspection:** Inspect tracked and untracked task files; `git diff` alone is not complete evidence.
 
-- Application code belongs in `<task_directory>/Coding/`; tests and fixtures belong
-  in `<task_directory>/test/` unless the task explicitly specifies another layout.
-- Inspect tracked and untracked files. Reject unrelated refactoring, generated files,
-  caches, logs, temporary scripts, and changes outside the selected task's authority.
-- Run the relevant tests and repository sanity checks such as `git diff --check`.
+## Evidence and verdict
 
-## 8. Evidence and verdict
-
-- Report the identified technology stack and the checks applied to it.
-- Report correctness, code quality, performance, security, and test-quality results.
-- Use severity based on impact: Critical, High, Medium, or Low. Do not block approval
-  for purely optional preferences; label those as non-blocking observations.
-- Each blocking finding must include a stable identifier, severity, file and line,
-  the concrete defect and impact, evidence or reproduction, and a specific required fix.
-- Return `APPROVED` only when there are no blocking findings and all applicable review
-  areas have evidence. Otherwise return `CHANGES_REQUESTED`.
+- **REVIEW-01 — Technology context:** Identify the actual runtime, frameworks, dependency versions, architecture, I/O boundaries, and workload before reviewing.
+- **REVIEW-02 — Evidence:** Every blocking finding must include a guideline ID, severity, existing file and line, concrete defect and impact, direct evidence, and specific required fix.
+- **REVIEW-03 — No invented findings:** Never claim an API rule, test result, performance problem, or line-level defect without verifying it from repository files, installed/declaration metadata, or an executed non-mutating reproduction.
+- **REVIEW-04 — Severity:** Use Critical, High, Medium, or Low based on user impact. Optional preferences are non-blocking observations.
+- **REVIEW-05 — Approval:** Return `APPROVED` only when deterministic checks pass, all applicable requirements have evidence, tests are meaningful, and no blocking findings remain. Otherwise return `CHANGES_REQUESTED`.

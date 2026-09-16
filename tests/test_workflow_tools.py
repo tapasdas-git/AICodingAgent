@@ -16,6 +16,16 @@ class ExecuteTaskTestsEnvironmentTests(unittest.TestCase):
             root = Path(temp_dir).resolve()
             test_dir = root / "workspace" / "sample_task" / "test"
             test_dir.mkdir(parents=True)
+            (test_dir / "test_sample.py").write_text(
+                "def test_sample():\n    assert 1 + 1 == 2\n", encoding="utf-8"
+            )
+            coding_dir = test_dir.parent / "Coding"
+            coding_dir.mkdir()
+            (coding_dir / "sample.py").write_text(
+                '"""Sample module."""\n\ndef add(left: int, right: int) -> int:\n'
+                '    """Return the sum of two integers."""\n    return left + right\n',
+                encoding="utf-8",
+            )
             trace_path = root / "TASK-999.logs"
             trace_path.touch()
             result_trace = root / "TASK-999_test.log"
@@ -55,7 +65,14 @@ class ExecuteTaskTestsEnvironmentTests(unittest.TestCase):
     def test_test_result_log_can_be_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir).resolve()
-            (root / "workspace" / "sample_task" / "test").mkdir(parents=True)
+            test_dir = root / "workspace" / "sample_task" / "test"
+            test_dir.mkdir(parents=True)
+            (test_dir / "test_sample.py").write_text(
+                "def test_sample():\n    assert True\n", encoding="utf-8"
+            )
+            coding_dir = root / "workspace" / "sample_task" / "Coding"
+            coding_dir.mkdir()
+            (coding_dir / "sample.py").write_text('"""Sample module."""\n', encoding="utf-8")
             trace_path = root / "TASK-998.logs"
             trace_path.touch()
             completed = subprocess.CompletedProcess([], 0, stdout="1 passed\n")
@@ -75,6 +92,41 @@ class ExecuteTaskTestsEnvironmentTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "passed")
             log_path.assert_not_called()
+
+    def test_quality_failure_blocks_a_passing_pytest_suite(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            workspace = root / "workspace" / "sample_task"
+            (workspace / "Coding").mkdir(parents=True)
+            (workspace / "test").mkdir()
+            (workspace / "Coding" / "sample.py").write_text(
+                "def public_api():\n    return 1\n", encoding="utf-8"
+            )
+            (workspace / "test" / "test_sample.py").write_text(
+                "def test_sample():\n    value = 1\n", encoding="utf-8"
+            )
+            trace = root / "TASK-997.logs"
+            raw = root / "TASK-997.raw.logs"
+            result_trace = root / "TASK-997_test.log"
+            trace.touch()
+            raw.touch()
+            result_trace.touch()
+            completed = subprocess.CompletedProcess([], 0, stdout="1 passed\n")
+            with (
+                patch.dict(os.environ, {"TASK_ID": "TASK-997", "TASK_DIR": "workspace/sample_task"}, clear=True),
+                patch.object(workflow_tools, "ROOT", root),
+                patch.object(workflow_tools, "task_trace_path", return_value=trace),
+                patch.object(workflow_tools, "task_raw_trace_path", return_value=raw),
+                patch.object(workflow_tools, "test_result_logging_enabled", return_value=True),
+                patch.object(workflow_tools, "test_trace_path", return_value=result_trace),
+                patch.object(workflow_tools.subprocess, "run", return_value=completed),
+            ):
+                result = json.loads(workflow_tools.execute_task_tests())
+
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["pytest_status"], "passed")
+            self.assertEqual(result["quality"]["status"], "failed")
+            self.assertIn("DOC-01", result_trace.read_text(encoding="utf-8"))
 
 
 class RecordStageEventTests(unittest.TestCase):
@@ -195,7 +247,7 @@ class TokenAuditTests(unittest.TestCase):
                 patch.object(workflow_tools, "task_trace_path", return_value=trace),
             ):
                 token_result = json.loads(workflow_tools.record_token_usage("implementer", 1, 250))
-                report_result = json.loads(workflow_tools.record_agent_report("reviewer", 1, "CHANGES_REQUESTED", "F1: fix validation"))
+                report_result = json.loads(workflow_tools.record_agent_report("implementer", 1, "COMPLETED", "F1: fix validation"))
             self.assertEqual(token_result["total_tokens"], 250)
             self.assertEqual(report_result["status"], "recorded")
             self.assertIn("F1: fix validation", raw.read_text(encoding="utf-8"))
@@ -230,6 +282,41 @@ class TokenAuditTests(unittest.TestCase):
             self.assertFalse(ledger["task_exhausted"])
             self.assertEqual(ledger["exhausted_agents"], ["supervisor"])
             self.assertEqual(ledger["remaining_tokens"], 324092)
+
+    def test_rejects_reviewer_finding_that_cites_an_invented_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            workspace = root / "workspace" / "sample"
+            workspace.mkdir(parents=True)
+            raw = root / "TASK-996.raw.logs"
+            trace = root / "TASK-996.logs"
+            raw.touch()
+            trace.touch()
+            report = """CHANGES_REQUESTED
+## Review summary
+- Scope: workspace/sample
+- Tech stack: Python 3.11
+- Tests: `pytest -v` — passed
+- Code quality: inspected
+- Performance: linear and bounded
+- Test quality: assertions inspected
+- Security: no external boundary
+## Findings
+- [F1] High [COR-02] — `Coding/invented.py:1` — Defect: validation is missing. Impact: invalid data executes. Evidence: file inspection. Required fix: add validation.
+"""
+            with (
+                patch.dict(os.environ, {"TASK_ID": "TASK-996", "TASK_DIR": "workspace/sample"}, clear=True),
+                patch.object(workflow_tools, "ROOT", root),
+                patch.object(workflow_tools, "task_raw_trace_path", return_value=raw),
+                patch.object(workflow_tools, "task_trace_path", return_value=trace),
+            ):
+                result = json.loads(
+                    workflow_tools.record_agent_report("reviewer", 1, "CHANGES_REQUESTED", report)
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(any("does not exist" in detail for detail in result["details"]))
+            self.assertEqual(raw.read_text(encoding="utf-8"), "")
 
 
 if __name__ == "__main__":

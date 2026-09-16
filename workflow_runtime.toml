@@ -29,6 +29,14 @@ supervisor_token_budget = 150000
 implementer_token_budget = 175000
 reviewer_token_budget = 75000
 
+[quality]
+# Objective gates run before AI review. Subjective review remains governed by
+# codeReviewGuideline.md and must cite evidence from the task workspace.
+enabled = true
+require_public_docstrings = true
+reject_placeholder_comments = true
+require_test_assertions = true
+
 # [models.claude_implementer]
 #provider = "anthropic"
 #model_name = "claude-3-5-sonnet-20241022"  # or claude-3-7-sonnet-20250219

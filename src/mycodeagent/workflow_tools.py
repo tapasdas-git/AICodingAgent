@@ -6,10 +6,13 @@ import json
 import hashlib
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
-from .paths import ROOT
+from .paths import ROOT, SETTINGS_PATH
 from .platform_utils import find_project_python
+from .protocol import validate_review_report
+from .quality_checks import run_quality_checks
 from .tracing import (
     task_raw_trace_path,
     task_trace_path,
@@ -35,6 +38,17 @@ def record_agent_report(agent: str, iteration: int, outcome: str, report: str) -
     if not isinstance(report, str) or not report.strip() or len(report) > 200_000:
         return json.dumps({"status": "error", "error": "report must contain 1 through 200000 characters"})
     report = report.strip()
+    if agent == "reviewer":
+        task_dir = os.environ.get("TASK_DIR", "").strip()
+        if not task_dir:
+            return json.dumps({"status": "error", "error": "TASK_DIR is required for reviewer evidence validation"})
+        workspace = (ROOT / task_dir).resolve()
+        errors = validate_review_report(report, workspace, ROOT)
+        expected_outcome = report.splitlines()[0]
+        if outcome != expected_outcome:
+            errors.append("review outcome does not match the report verdict")
+        if errors:
+            return json.dumps({"status": "error", "error": "invalid reviewer report", "details": errors})
     digest = hashlib.sha256(f"{agent}\0{iteration}\0{outcome}\0{report}".encode()).hexdigest()[:16]
     marker = f"===== AGENT_REPORT task={task_id} agent={agent} iteration={iteration} outcome={outcome} digest={digest} ====="
     raw_path = task_raw_trace_path(task_id)
@@ -301,7 +315,7 @@ def record_stage_event(event: str, iteration: int) -> str:
 
 
 def execute_task_tests() -> str:
-    """Run the active task's isolated pytest suite and return a structured observation."""
+    """Run deterministic quality checks and the isolated pytest suite."""
     task_id = os.environ.get("TASK_ID", "").strip()
     task_dir = os.environ.get("TASK_DIR", "").strip()
     if not task_id or not task_dir:
@@ -329,6 +343,22 @@ def execute_task_tests() -> str:
     if inherited_pythonpath:
         python_paths.append(inherited_pythonpath)
     test_environment["PYTHONPATH"] = os.pathsep.join(python_paths)
+    try:
+        with SETTINGS_PATH.open("rb") as settings_file:
+            quality_settings = tomllib.load(settings_file).get("quality", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        quality_settings = {}
+    quality_enabled = bool(quality_settings.get("enabled", True))
+    quality = (
+        run_quality_checks(
+            workspace,
+            require_public_docstrings=bool(quality_settings.get("require_public_docstrings", True)),
+            reject_placeholder_comments=bool(quality_settings.get("reject_placeholder_comments", True)),
+            require_test_assertions=bool(quality_settings.get("require_test_assertions", True)),
+        )
+        if quality_enabled
+        else {"status": "disabled", "checked_files": 0, "issues": []}
+    )
     trace_path = task_trace_path(task_id)
     last_event = _last_stage_event(trace_path)
     if last_event and last_event[0] == "IMPLEMENTATION_STARTED":
@@ -361,24 +391,40 @@ def execute_task_tests() -> str:
                 write_trace_output(result_trace_path, f"{output.rstrip()}\n")
         return json.dumps({"status": "timeout", "task_id": task_id, "command": command, "output": output})
 
-    status = "passed" if completed.returncode == 0 else "failed"
-    write_trace(trace_path, f"Tests {status} (exit code {completed.returncode})")
+    pytest_status = "passed" if completed.returncode == 0 else "failed"
+    quality_status = str(quality["status"])
+    status = "passed" if pytest_status == "passed" and quality_status in {"passed", "disabled"} else "failed"
+    write_trace(trace_path, f"Tests {pytest_status} (exit code {completed.returncode})")
+    if quality_status != "disabled":
+        write_trace(
+            trace_path,
+            f"Quality checks {quality_status} ({len(quality['issues'])} issues across {quality['checked_files']} files)",
+        )
     if result_trace_path is not None:
+        combined_exit_code = completed.returncode if completed.returncode else (1 if status == "failed" else 0)
         write_trace(
             result_trace_path,
-            f"TEST_FINISHED task={task_id} status={status} exit_code={completed.returncode}",
+            f"TEST_FINISHED task={task_id} status={status} exit_code={combined_exit_code}",
         )
         if completed.stdout:
             write_trace_output(result_trace_path, f"{completed.stdout.rstrip()}\n")
+        if quality_status != "disabled":
+            write_trace_output(
+                result_trace_path,
+                "QUALITY_CHECKS " + json.dumps(quality, sort_keys=True) + "\n",
+            )
     if status == "failed":
         bounded_output = completed.stdout[-4000:].strip()
-        write_trace_output(task_raw_trace_path(task_id), f"TEST_FAILURE_OUTPUT {bounded_output}\n")
+        diagnostic = f"TEST_FAILURE_OUTPUT {bounded_output}\nQUALITY_CHECKS {json.dumps(quality, sort_keys=True)}\n"
+        write_trace_output(task_raw_trace_path(task_id), diagnostic)
     return json.dumps(
         {
             "status": status,
             "task_id": task_id,
             "command": command,
-            "exit_code": completed.returncode,
+            "exit_code": completed.returncode if completed.returncode else (1 if status == "failed" else 0),
             "output": completed.stdout,
+            "pytest_status": pytest_status,
+            "quality": quality,
         }
     )
