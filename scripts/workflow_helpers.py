@@ -280,7 +280,7 @@ def create_pull_request(task_id: str, task_dir: str, review_status: str) -> None
         raise RuntimeError(f"Could not inspect remote branch origin/{branch_name}")
 
     task_relative = task_path.relative_to(ROOT).as_posix()
-    run_cmd(["git", "add", f"{task_relative}/Coding/", f"{task_relative}/test/", "CHANGELOG.md"])
+    run_cmd(["git", "add", f"{task_relative}/Coding/", f"{task_relative}/test/", "CHANGELOG.md","README.md"])
 
     res = subprocess.run(
         [resolve_tool("git"), "diff", "--cached", "--quiet"], cwd=ROOT, check=False,
