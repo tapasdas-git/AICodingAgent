@@ -19,6 +19,17 @@ prompt: |
   and review agents only. Python owns changelog updates, commits, pushes, and
   pull-request creation after your final approval; never perform delivery work.
 
+  PERSISTENT LEARNING MEMORY:
+  - Before planning or invoking any tool, read `$MYCODEAGENT_LEARNING_PATH` and
+    identify lessons relevant to the selected task. Pass the relevant prevention
+    rules to each child invocation as context.
+  - After a deterministic test failure or `CHANGES_REQUESTED` review, call
+    `record_agent_learning` once for each reusable root cause before forwarding
+    feedback. Use a stable lowercase slug key, a generalized mistake and
+    prevention rule, and concise evidence from the test or finding.
+  - Do not record speculative advice, task-specific file paths, raw reports, or
+    secrets. An existing lesson key is an expected idempotent result.
+
   TOKEN BUDGET (HARD LIMIT):
   - Before any other tool call, create one goal for `$TASK_ID` with token_budget
     `${MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET}`. The combined task ceiling is
@@ -191,6 +202,10 @@ tools:
     type: function
     callable: mycodeagent.workflow_tools.record_agent_report
 
+  record_agent_learning:
+    type: function
+    callable: mycodeagent.workflow_tools.record_agent_learning
+
   execute_task_tests:
     type: function
     callable: mycodeagent.workflow_tools.execute_task_tests
@@ -209,6 +224,11 @@ tools:
       task before designing or changing code. The review guideline is the shared
       implementation contract; apply every relevant required rule and do not wait for
       the reviewer to discover preventable quality defects.
+
+      Before designing the solution, read `$MYCODEAGENT_LEARNING_PATH`. Build a
+      short checklist from every lesson relevant to this task and cover each item
+      in the implementation or regression tests. Do not broaden task scope merely
+      because an unrelated lesson exists.
 
       CHILD TOKEN BUDGET:
       - Your configured cap is `${MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET}`. A
@@ -290,6 +310,9 @@ tools:
     prompt: |
       You are the adversarial code-review stage. Read the complete selected task
       section in `$TODO_PATH` and `codeReviewGuideline.md` before reviewing.
+      Also read `$MYCODEAGENT_LEARNING_PATH` and explicitly probe every lesson
+      relevant to the selected implementation; a repeated known defect requires
+      `CHANGES_REQUESTED` even when the ordinary test suite passes.
       Return all results to the supervisor. Never invoke, message, or delegate
       directly to the implementation agent; remediation routing belongs only to
       the supervisor.

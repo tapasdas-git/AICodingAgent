@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import subprocess
 import tomllib
 from pathlib import Path
 
+from .file_lock import task_state_lock
 from .paths import ROOT, SETTINGS_PATH
 from .platform_utils import find_project_python
 from .protocol import validate_review_report
@@ -25,6 +27,61 @@ from .tracing import (
 
 TOKEN_AGENTS = {"supervisor", "implementer", "reviewer"}
 REPORT_OUTCOMES = {"COMPLETED", "FAILED", "APPROVED", "CHANGES_REQUESTED", "REMEDIATE", "BLOCKED"}
+LEARNING_CATEGORIES = {"test failure", "review finding", "implementation failure"}
+LEARNING_KEY = re.compile(r"[a-z0-9][a-z0-9-]{2,79}")
+
+
+def _learning_path() -> Path:
+    """Return the shared learning memory, including from an isolated worktree."""
+    configured = os.environ.get("MYCODEAGENT_LEARNING_PATH", "").strip()
+    return Path(configured).expanduser().resolve() if configured else ROOT / "AGENTS.md"
+
+
+def _single_line(value: str) -> str:
+    """Normalize model-provided learning text into one Markdown-safe line."""
+    return " ".join(value.strip().split())
+
+
+def record_agent_learning(
+    key: str, category: str, mistake: str, prevention: str, evidence: str
+) -> str:
+    """Append one verified, reusable, deduplicated lesson to AGENTS.md."""
+    task_id = os.environ.get("TASK_ID", "").strip()
+    key = key.strip().lower()
+    category = _single_line(category).lower()
+    fields = {
+        "mistake": _single_line(mistake),
+        "prevention": _single_line(prevention),
+        "evidence": _single_line(evidence),
+    }
+    if not task_id:
+        return json.dumps({"status": "error", "error": "TASK_ID is required"})
+    if LEARNING_KEY.fullmatch(key) is None:
+        return json.dumps({"status": "error", "error": "key must be a 3-80 character lowercase slug"})
+    if category not in LEARNING_CATEGORIES:
+        return json.dumps({"status": "error", "error": "unsupported learning category"})
+    if any(not value or len(value) > 500 for value in fields.values()):
+        return json.dumps({"status": "error", "error": "learning fields must contain 1 through 500 characters"})
+
+    path = _learning_path()
+    marker = f"<!-- learning:{key} -->"
+    entry = (
+        f"\n{marker}\n"
+        f"### {fields['prevention'].rstrip('.')}\n\n"
+        f"- Category: {category}\n"
+        f"- Mistake: {fields['mistake']}\n"
+        f"- Prevention: {fields['prevention']}\n"
+        f"- Evidence: {task_id} — {fields['evidence']}\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with task_state_lock(path):
+        current = path.read_text(encoding="utf-8") if path.is_file() else "# Agent learning memory\n"
+        if marker in current:
+            return json.dumps({"status": "already_recorded", "key": key})
+        with path.open("a", encoding="utf-8") as learning_file:
+            learning_file.write(entry)
+    write_trace(task_trace_path(task_id), f"Agent learning persisted: key={key} category={category}")
+    return json.dumps({"status": "recorded", "key": key})
 
 
 def record_agent_report(agent: str, iteration: int, outcome: str, report: str) -> str:

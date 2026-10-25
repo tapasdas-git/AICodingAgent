@@ -32,6 +32,8 @@ def test_token_budget_and_report_audit_are_configured() -> None:
         assert runtime[key] > 0
     assert "callable: mycodeagent.workflow_tools.record_token_usage" in workflow
     assert "callable: mycodeagent.workflow_tools.record_agent_report" in workflow
+    assert "callable: mycodeagent.workflow_tools.record_agent_learning" in workflow
+    assert "read `$MYCODEAGENT_LEARNING_PATH`" in workflow
 
 
 def test_implementer_and_reviewer_share_quality_and_evidence_rules() -> None:

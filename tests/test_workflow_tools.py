@@ -319,5 +319,54 @@ class TokenAuditTests(unittest.TestCase):
             self.assertEqual(raw.read_text(encoding="utf-8"), "")
 
 
+class AgentLearningTests(unittest.TestCase):
+    def test_records_and_deduplicates_verified_learning(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            learning = root / "AGENTS.md"
+            trace = root / "TASK-999.logs"
+            learning.write_text("# Learning\n", encoding="utf-8")
+            trace.touch()
+            environment = {
+                "TASK_ID": "TASK-999",
+                "MYCODEAGENT_LEARNING_PATH": str(learning),
+            }
+            arguments = (
+                "validate-calculator-operation-set",
+                "review finding",
+                "The calculator accepted duplicate required operations.",
+                "Validate the exact required operation set and test duplicates.",
+                "Reviewer finding F1 reproduced the duplicate operation defect.",
+            )
+            with (
+                patch.dict(os.environ, environment, clear=True),
+                patch.object(workflow_tools, "task_trace_path", return_value=trace),
+            ):
+                first = json.loads(workflow_tools.record_agent_learning(*arguments))
+                duplicate = json.loads(workflow_tools.record_agent_learning(*arguments))
+
+            content = learning.read_text(encoding="utf-8")
+            self.assertEqual(first["status"], "recorded")
+            self.assertEqual(duplicate["status"], "already_recorded")
+            self.assertEqual(content.count("<!-- learning:validate-calculator-operation-set -->"), 1)
+            self.assertIn("Evidence: TASK-999", content)
+
+    def test_rejects_unstructured_or_unsupported_learning(self) -> None:
+        with patch.dict(os.environ, {"TASK_ID": "TASK-999"}, clear=True):
+            bad_key = json.loads(
+                workflow_tools.record_agent_learning(
+                    "Bad Key", "test failure", "mistake", "prevention", "evidence"
+                )
+            )
+            bad_category = json.loads(
+                workflow_tools.record_agent_learning(
+                    "valid-key", "guess", "mistake", "prevention", "evidence"
+                )
+            )
+
+        self.assertEqual(bad_key["status"], "error")
+        self.assertEqual(bad_category["status"], "error")
+
+
 if __name__ == "__main__":
     unittest.main()

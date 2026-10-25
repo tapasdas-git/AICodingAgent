@@ -247,6 +247,9 @@ def execute_omnigent_stage(
 
     trace_path = task_trace_path(task.task_id)
     environment = workflow_environment()
+    learning_path = Path(
+        os.environ.get("MYCODEAGENT_LEARNING_PATH", ROOT / "AGENTS.md")
+    ).expanduser().resolve()
     environment.update({
         "OMNIGENT_WORKFLOW_MODEL": str(settings["model"]), "OMNIGENT_WORKFLOW_EFFORT": str(settings["effort"]),
         "TASK_ID": task.task_id,
@@ -256,6 +259,7 @@ def execute_omnigent_stage(
         "MYCODEAGENT_SUPERVISOR_TOKEN_BUDGET": str(agent_budgets["supervisor"]),
         "MYCODEAGENT_IMPLEMENTER_TOKEN_BUDGET": str(agent_budgets["implementer"]),
         "MYCODEAGENT_REVIEWER_TOKEN_BUDGET": str(agent_budgets["reviewer"]),
+        "MYCODEAGENT_LEARNING_PATH": str(learning_path),
     })
     if delivery_approved:
         environment["MYCODEAGENT_REVIEW_STATUS"] = "APPROVED"

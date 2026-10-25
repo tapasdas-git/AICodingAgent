@@ -201,6 +201,7 @@ def run_submission_in_worktree(
         "MYCODEAGENT_WORKFLOW_PATH": str(ROOT / "coding_agent.yaml"),
         "MYCODEAGENT_HELPER_PATH": str(ROOT / "scripts" / "workflow_helpers.py"),
         "MYCODEAGENT_APPROVAL_PATH": str(ROOT / "git_approval.toml"),
+        "MYCODEAGENT_LEARNING_PATH": str(ROOT / "AGENTS.md"),
         "MYCODEAGENT_TEST_PYTHON": str(find_project_python(ROOT)),
         # A clean origin-default worktree may not contain the latest uncommitted
         # workflow runtime modules. Put the launcher runtime first so both the
